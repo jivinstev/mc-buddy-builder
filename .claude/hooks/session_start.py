@@ -8,14 +8,19 @@ notes = []
 try:
     props = open(os.path.join(root, 'gradle.properties'), encoding='utf-8').read()
     if re.search(r'(?m)^mod_id=buddymod\s*$', props):
-        notes.append('The mod still has the starter name ("Buddy Mod"). Before building anything, ask '
-                     'the child what their mod is called and run /name-my-mod.')
+        notes.append('The mod still has the starter name ("Buddy Mod"). Your FIRST message to the child '
+                     'asks what their mod is called, even if they asked to build something straight away; '
+                     'then run /name-my-mod. Editing src/ and art/ is refused until it has a name.')
 except OSError:
     pass
 env = os.path.join(root, '.env.local')
 if not os.path.isfile(env):
-    notes.append('There is no .env.local yet, so no Minecraft version or mods folder is chosen. '
-                 'Ask the grown-up to run ./setup in a terminal (it asks a few questions).')
+    if os.environ.get('CLAUDE_CODE_REMOTE') == 'true':
+        notes.append('There is no .env.local yet. This is a cloud session: run ./setup --yes yourself '
+                     '(no questions; it picks the Minecraft version and checks the cloud tools).')
+    else:
+        notes.append('There is no .env.local yet, so no Minecraft version or mods folder is chosen. '
+                     'Ask the grown-up to run ./setup in a terminal (it asks a few questions).')
 else:
     text = open(env, encoding='utf-8').read()
     m = re.search(r'(?m)^MC_TARGET=(.+)$', text)

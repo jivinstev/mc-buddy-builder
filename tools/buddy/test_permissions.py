@@ -31,7 +31,7 @@ WORKFLOW = [
     './tools/gate-b.sh', 'MC=1.21.1 ./tools/gate-b.sh', 'MC=26.2 ./tools/gate-b.sh',
     './tools/client-test.sh', 'MC=1.21.1 ./tools/client-test.sh', 'MC=26.2 ./tools/client-test.sh',
     'python3 tools/buddy/rename_mod.py --name "Dragon Mod"', 'python3 tools/buddy/test_rename_mod.py',
-    'python3 tools/buddy/test_setup.py', 'python3 tools/check-private-terms.py --staged',
+    'python3 tools/buddy/test_setup.py', 'python3 tools/buddy/test_name_guard.py', 'python3 tools/check-private-terms.py --staged',
     'python3 tools/buddy/make_texture.py art/dragon.txt src/main/resources/assets/buddymod/textures/block/dragon.png',
     'python3 tools/buddy/test_make_texture.py',
     'python3 cloud/check.py', 'bash cloud/ensure.sh java25',

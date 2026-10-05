@@ -21,6 +21,8 @@ jobs:
         run: python3 tools/buddy/test_permissions.py
       - name: Rename tool
         run: python3 tools/buddy/test_rename_mod.py
+      - name: The mod is named before it is built
+        run: python3 tools/buddy/test_name_guard.py
       - name: Setup script
         run: python3 tools/buddy/test_setup.py
       - name: Texture tool

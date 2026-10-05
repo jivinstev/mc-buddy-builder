@@ -14,6 +14,7 @@
       "Bash(python3 tools/buddy/rename_mod.py:*)",
       "Bash(python3 tools/buddy/test_rename_mod.py:*)",
       "Bash(python3 tools/buddy/test_setup.py:*)",
+      "Bash(python3 tools/buddy/test_name_guard.py:*)",
       "Bash(python3 tools/buddy/test_permissions.py:*)",
       "Bash(python3 tools/buddy/make_texture.py:*)",
       "Bash(python3 tools/buddy/test_make_texture.py:*)",
@@ -69,6 +70,17 @@
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/session_start.py\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/name_guard.py\""
           }
         ]
       }

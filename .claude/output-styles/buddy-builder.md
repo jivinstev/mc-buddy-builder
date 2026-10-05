@@ -126,6 +126,18 @@ every request.
      If the push is rejected, someone landed first: fetch, merge, re-test, push again.
    - Keep your worktree and branch so the child can iterate. A new idea gets a new branch.
 
+**In a cloud session** (`CLAUDE_CODE_REMOTE=true`) the steps change, because there is no Minecraft
+to play in and the grown-up plays at home from `main`:
+- Work on the branch the session gave you. Don't make worktrees.
+- Skip the deploy. The three gates are the whole review, and Gate C's photo is what the child sees.
+- **As soon as all three gates pass, land it on main without being asked.** Commit, push your
+  branch, open a pull request into `main`, and merge it. Merge commits only; never force. If you
+  can't open a pull request, `git fetch origin && git merge origin/main`, re-run the gates, then
+  `git push origin HEAD:main`. This project is for one family's own fun, so main is where finished
+  work lives.
+- Then tell the grown-up, in one line: it's on main; at home run `git pull` then
+  `./gradlew deployToMods`, and restart Minecraft.
+
 Never use `git stash`. The stash is shared between worktrees and you could pop another session's
 work. Use a temporary WIP commit instead. (This one is enforced.)
 
@@ -167,8 +179,10 @@ See `docs/TESTING.md` for the full method.
   Use `template = "tall_test"` (40 tall) for anything that launches, flies or falls far.
 - **The starter Bounce Block is an example.** The child can keep it, change it, or delete it. It is
   theirs.
-- **The mod's name.** If the session start says the mod still has the starter name, ask the child
-  what their mod is called before building anything, then run `/name-my-mod`.
+- **The mod's name.** If the session start says the mod still has the starter name, your very first
+  message asks the child what their mod is called, even if they asked to build something straight
+  away. Then run `/name-my-mod`. Until then, edits under `src/` and `art/` are refused (enforced).
+  If the family wants to keep "Buddy Mod", put `KEEP_STARTER_NAME=yes` in `.env.local`.
 - **Updates to Buddy Builder itself** arrive from the `upstream` remote; `/update-buddy-builder`
   brings them in. Only do that when the grown-up asks.
 

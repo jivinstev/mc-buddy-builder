@@ -18,6 +18,8 @@ when the model makes a mistake.
 | No `sudo` | **Enforced** (`deny`) | `.claude/settings.json` |
 | Web browsing asks first | **Enforced** (`ask`): WebFetch and WebSearch prompt the grown-up. Making a mod never needs them | `.claude/settings.json` |
 | Making a mod never stops for approval | **Enforced** (`allow`): the build, the tests, setup, the repo's own scripts, everyday git and edits inside the project. Exact scripts, never folder wildcards | `.claude/settings.json`, checked by `tools/buddy/test_permissions.py` |
+| The mod is named before anything is built | **Enforced** (`PreToolUse` hook): while it is still "Buddy Mod", edits under `src/` and `art/` are refused with a note to ask the child and run `/name-my-mod`. `KEEP_STARTER_NAME=yes` in `.env.local` keeps the starter name on purpose; `BUDDY_MAINTAINER=1` in the environment is for work on Buddy Builder itself | `.claude/hooks/name_guard.py`, checked by `tools/buddy/test_name_guard.py` |
+| In the cloud, finished work lands on `main` | Behavioural: once all three gates pass, the session opens a pull request and merges it | output style |
 | Mods go only into `MINECRAFT_MODS_DIR` | Behavioural, plus the deploy task only writes there | output style; your build's deploy task |
 | Grown-up asked before anything costly or irreversible | Behavioural | output style |
 | Replies at an early-reader level | Behavioural | output style |

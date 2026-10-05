@@ -56,8 +56,9 @@ Nothing to install. One environment works for this repo and for
    **6. Cloud environment**.
 4. **Let your child say what they want to make.** Claude builds it and runs all three gates.
 
-In the cloud you build and test. To play, on your own computer: clone your copy, run `./setup` once
-(it finds your Minecraft), check out the branch the session pushed, and run `./gradlew deployToMods`.
+In the cloud you build and test, and finished work lands on `main` once the gates pass. To play, on
+your own computer: clone your copy and run `./setup` once (it finds your Minecraft). After that,
+each time: `git pull`, then `./gradlew deployToMods`.
 More: [docs/CLOUD.md](docs/CLOUD.md).
 
 ## More

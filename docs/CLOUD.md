@@ -22,8 +22,9 @@ drift (`python3 cloud/check_readme.py`).
 - **Changing the domains needs a new session.** A running session keeps the list it started with.
 - **The first build is the slow part** (several minutes): Gradle downloads and decompiles Minecraft.
   Nothing can usefully do that ahead of time without blocking the session, so it happens on first build.
-- **You can't play in the cloud.** There's no Minecraft to deploy into. Pull your copy and run
-  `./gradlew deployToMods` at home.
+- **You can't play in the cloud.** There's no Minecraft to deploy into. When the gates pass, the
+  session opens a pull request and merges it into `main` on its own. At home: `git pull`, then
+  `./gradlew deployToMods`.
 - **Making your own copy.** In the cloud, GitHub access is limited to the repos attached to the
   session, so `./setup` can't create a repo for you there. Use **Use this template** on GitHub
   instead.
