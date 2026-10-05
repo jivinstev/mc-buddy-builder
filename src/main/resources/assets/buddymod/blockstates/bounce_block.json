@@ -1,0 +1,5 @@
+{
+  "variants": {
+    "": { "model": "buddymod:block/bounce_block" }
+  }
+}

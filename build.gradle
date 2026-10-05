@@ -1,0 +1,237 @@
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.146'
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WHICH MINECRAFT?
+//
+// One source tree builds for more than one Minecraft version. The target is, in order:
+//   1. -Pmc=<target> on the command line
+//   2. MC_TARGET=<target> in .env.local   (./setup writes this for you)
+//   3. 26.2
+//
+// Everything that differs between versions is DATA in versions/<target>.properties.
+// This file never branches on a version number.
+// ─────────────────────────────────────────────────────────────────────────────
+def readEnvLocal(String key) {
+    def envFile = file('.env.local')
+    if (!envFile.exists()) return null
+    def value = null
+    envFile.eachLine { line ->
+        def m = (line =~ /^\s*${key}=(.*)$/)
+        if (m) value = m[0][1].trim()
+    }
+    if (value != null && value.startsWith('~')) value = System.getProperty('user.home') + value.substring(1)
+    return value ?: null
+}
+
+ext.mcTarget = project.findProperty('mc') ?: readEnvLocal('MC_TARGET') ?: '26.2'
+def versionFile = file("versions/${ext.mcTarget}.properties")
+if (!versionFile.exists()) {
+    def known = file('versions').listFiles()?.findAll { it.name.endsWith('.properties') }
+                    ?.collect { it.name - '.properties' }?.sort()
+    throw new GradleException("Unknown Minecraft target '${ext.mcTarget}'. Known targets: ${known}")
+}
+def mcProps = new Properties()
+versionFile.withInputStream { mcProps.load(it) }
+mcProps.each { k, v -> ext.set(k.toString(), v.toString()) }
+logger.lifecycle("${mod_name} -> Minecraft ${minecraft_version} (NeoForge ${neo_version}, Java ${java_version})")
+
+version = mod_version
+group = mod_group_id
+// The Minecraft version is in the jar name so two targets never overwrite each other.
+base { archivesName = "${mod_id}-mc${minecraft_version}" }
+java.toolchain.languageVersion = JavaLanguageVersion.of(java_version as int)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SHARED SOURCE -> THIS VERSION'S SOURCE
+//
+//   src/main/java  --[ versions/<target>.renames.tsv ]-->  build/generated/sources/<overlay>
+//                  --[ src/<overlay>/java replaces whole files ]-->
+//
+// A version difference is either a rename row (same API, new name) or a whole file in
+// src/mc21 or src/mc26 (a real difference). Shared files never test the version.
+// Both targets run the same pipeline so the mechanism is proven by every build.
+// ─────────────────────────────────────────────────────────────────────────────
+def preparedJava = layout.buildDirectory.dir("generated/sources/${overlay}/java")
+def preparedTestJava = layout.buildDirectory.dir("generated/sources/${overlay}/test-java")
+def renameHits = layout.buildDirectory.file("generated/sources/${overlay}/rename-hits.txt")
+
+def prepareSources = tasks.register('prepareSources', Exec) {
+    description = "Prepare src/main/java for Minecraft ${minecraft_version}"
+    inputs.dir('src/main/java').withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.file("versions/${mcTarget}.renames.tsv")
+    if (file("src/${overlay}/java").exists()) {
+        inputs.dir("src/${overlay}/java").withPathSensitivity(PathSensitivity.RELATIVE)
+    }
+    inputs.files('tools/buddy/prepare-sources.py', 'tools/buddy/gametest_adapter.py')
+    outputs.dir(preparedJava)
+    outputs.file(renameHits)
+    def gtArgs = project.hasProperty('gametest_adapter')
+            ? ['--gametest-adapter', mod_id, '--gametest-pkg', "${mod_group_id}.compat",
+               '--gametest-structure', 'empty_test'] : []
+    commandLine(['python3', 'tools/buddy/prepare-sources.py',
+            '--src', 'src/main/java',
+            '--overlay', "src/${overlay}/java",
+            '--renames', "versions/${mcTarget}.renames.tsv",
+            '--hits-out', renameHits.get().asFile.absolutePath,
+            '--out', preparedJava.get().asFile.absolutePath] + gtArgs)
+}
+
+// The test tree goes through the same table. It runs second and prints the one
+// dead-rule report for both trees.
+def prepareTestSources = tasks.register('prepareTestSources', Exec) {
+    description = "Prepare src/test/java for Minecraft ${minecraft_version}"
+    inputs.dir('src/test/java').withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.file("versions/${mcTarget}.renames.tsv")
+    inputs.file('tools/buddy/prepare-sources.py')
+    inputs.file(renameHits)
+    outputs.dir(preparedTestJava)
+    dependsOn prepareSources
+    commandLine('python3', 'tools/buddy/prepare-sources.py',
+            '--src', 'src/test/java',
+            '--renames', "versions/${mcTarget}.renames.tsv",
+            '--hits-in', renameHits.get().asFile.absolutePath,
+            '--out', preparedTestJava.get().asFile.absolutePath)
+}
+// Run the report even when the compile then fails: that is when it matters most.
+prepareSources.configure { finalizedBy prepareTestSources }
+
+sourceSets.main.java.srcDirs = [preparedJava]
+sourceSets.main.resources.srcDir("src/${overlay}/resources")
+sourceSets.test.java.srcDirs = [preparedTestJava]
+tasks.named('compileJava') { dependsOn prepareSources }
+tasks.named('compileTestJava') { dependsOn prepareTestSources }
+
+// The names check runs with every build, not only in the git hook.
+def checkPrivateTerms = tasks.register('checkPrivateTerms', Exec) {
+    description = 'Fail if a private term appears in a tracked file'
+    outputs.upToDateWhen { false }
+    commandLine 'python3', 'tools/check-private-terms.py'
+}
+tasks.named('check') { dependsOn checkPrivateTerms }
+
+repositories {
+    maven { name = 'NeoForged'; url = 'https://maven.neoforged.net/releases' }
+    maven { name = 'Minecraft Libraries'; url = 'https://libraries.minecraft.net' }
+    mavenCentral()
+}
+
+neoForge {
+    version = neo_version
+
+    mods {
+        "${mod_id}" { sourceSet sourceSets.main }
+    }
+
+    // Gate A tests can use real Minecraft types (BlockPos, registries).
+    unitTest {
+        enable()
+        testedMod = mods."${mod_id}"
+    }
+
+    runs {
+        configureEach {
+            systemProperty 'forge.logging.console.level', 'info'
+            // One run folder per Minecraft version, so the two never share a world.
+            gameDirectory = project.layout.projectDirectory.dir('run').dir("${name}-mc${minecraft_version}")
+            // Gate C: -Pboottest [-Ptestmode=<mode>] [-Psigdir=<dir>] [-Ptestprops=a=1,b=2]
+            if (project.hasProperty('boottest')) systemProperty "${mod_id}.boottest", 'true'
+            if (project.hasProperty('testmode')) systemProperty "${mod_id}.testmode", project.property('testmode').toString()
+            if (project.hasProperty('sigdir'))   systemProperty "${mod_id}.sigdir", project.property('sigdir').toString()
+            if (project.hasProperty('testprops')) {
+                project.testprops.split(',').each { pair ->
+                    def kv = pair.trim().split('=', 2)
+                    if (kv.length == 2 && kv[0]) systemProperty "${mod_id}.${kv[0].trim()}", kv[1].trim()
+                }
+            }
+        }
+        client {
+            client()
+            systemProperty 'neoforge.enabledGameTestNamespaces', mod_id
+        }
+        server {
+            server()
+            programArgument '--nogui'
+        }
+        gameTestServer {
+            type = 'gameTestServer'
+            systemProperty 'neoforge.enabledGameTestNamespaces', mod_id
+            jvmArgument '-Xmx2G'
+        }
+    }
+}
+
+dependencies {
+    // No explicit neoforge dependency: ModDevGradle supplies Minecraft + NeoForge.
+    testImplementation platform('org.junit:junit-bom:5.10.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test { useJUnitPlatform() }
+
+tasks.withType(ProcessResources).configureEach {
+    var replaceProperties = [
+            minecraft_version      : minecraft_version,
+            minecraft_version_range: minecraft_version_range,
+            neo_version            : neo_version,
+            loader_version_range   : loader_version_range,
+            mod_id                 : mod_id,
+            mod_name               : mod_name,
+            mod_license            : mod_license,
+            mod_version            : mod_version
+    ]
+    inputs.properties replaceProperties
+    filesMatching(['META-INF/neoforge.mods.toml']) { expand replaceProperties }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.compilerArgs << '-Xmaxerrs' << '100000'
+}
+
+// Install the built jar into your Minecraft mods folder. ATOMIC: overwriting a jar in
+// place while Minecraft is running corrupts the live game, so stage then move.
+// .env.local: MINECRAFT_MODS_DIR_<version with dots as underscores>, else MINECRAFT_MODS_DIR.
+tasks.register('deployToMods') {
+    dependsOn 'build'
+    doLast {
+        def versionKey = 'MINECRAFT_MODS_DIR_' + minecraft_version.replace('.', '_')
+        def modsDir = readEnvLocal(versionKey) ?: readEnvLocal('MINECRAFT_MODS_DIR')
+        if (!modsDir) {
+            println "No ${versionKey} or MINECRAFT_MODS_DIR in .env.local. Run ./setup first. Skipping deploy."
+            return
+        }
+        def target = new File(modsDir)
+        if (!target.isDirectory()) throw new GradleException("mods folder does not exist: ${modsDir}")
+        def jarName = "${base.archivesName.get()}-${mod_version}.jar"
+        def src = file("build/libs/${jarName}")
+        if (!src.exists()) throw new GradleException("built jar not found: ${src}")
+        // Remove our own older jars for this version so two copies never load at once.
+        target.listFiles().findAll { it.name.startsWith("${mod_id}-mc${minecraft_version}-") && it.name != jarName }
+              .each { println "removing older ${it.name}"; it.delete() }
+        def dest = new File(target, jarName)
+        def tmp = new File(target, jarName + '.tmp-' + System.nanoTime())
+        try {
+            java.nio.file.Files.copy(src.toPath(), tmp.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            try {
+                java.nio.file.Files.move(tmp.toPath(), dest.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+            } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+                java.nio.file.Files.move(tmp.toPath(), dest.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            }
+            println "Installed ${jarName} into ${modsDir}. Restart Minecraft to load it."
+        } finally {
+            if (tmp.exists()) tmp.delete()
+        }
+    }
+}
+
+// Tests read shipped files by relative path; run them from the project folder.
+afterEvaluate { tasks.withType(Test).configureEach { workingDir = projectDir } }
+
+tasks.register('showTarget') {
+    doLast { println "target=${mcTarget} mc=${minecraft_version} neo=${neo_version} java=${java_version} overlay=${overlay}" }
+}
