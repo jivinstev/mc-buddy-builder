@@ -134,6 +134,10 @@ def recommend(installs, targets):
 class Ask:
     def __init__(self, a):
         self.interactive = not (a.yes or a.check)
+        # Claude Code runs ./setup with no keyboard attached: a question would just stop setup.
+        if self.interactive and not sys.stdin.isatty():
+            self.interactive = False
+            print('(no keyboard here, so taking every recommendation, as --yes does)')
 
     def __call__(self, question, default, choices=None):
         if not self.interactive:
@@ -319,7 +323,10 @@ def main():
     print()
     for n in notes:
         print('note: ' + n)
-    print('Next: open this folder in Claude Code (`claude`) and let your child say hi.')
+    if cloud:
+        print('Next: you are already in Claude Code. Let your child say what they want to make.')
+    else:
+        print('Next: open this folder in Claude Code (`claude`) and let your child say hi.')
     print('Build and test by hand: ./gradlew build, ./tools/gate-b.sh, ./tools/client-test.sh')
     return 0
 

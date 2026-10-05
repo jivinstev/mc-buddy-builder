@@ -5,7 +5,8 @@
 
 Checks that an existing NeoForge install is found and recommended, that the default with no
 install is the newest version, that a re-run with --yes changes nothing, and that 'local'
-keeps Buddy Builder reachable as `upstream`.
+keeps Buddy Builder reachable as `upstream`, and that with no keyboard (Claude running it) plain
+./setup finishes like --yes.
 """
 import json, os, pathlib, shutil, subprocess, sys, tempfile
 
@@ -23,8 +24,9 @@ def setup(repo, home, *args, cloud=False):
     env.pop('CLAUDE_CODE_REMOTE', None)
     if cloud:
         env['CLAUDE_CODE_REMOTE'] = 'true'
+    # No keyboard, like Claude Code's own shell (and CI).
     return subprocess.run([sys.executable, 'tools/buddy/setup.py', *args], cwd=repo, env=env,
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, stdin=subprocess.DEVNULL)
 
 
 def env_of(repo):
@@ -92,6 +94,13 @@ def main():
         remotes = subprocess.run(['git', 'remote'], cwd=repo, capture_output=True, text=True).stdout.split()
         if remotes != ['origin'] or '6. Cloud environment' not in r.stdout:
             fails.append('in the cloud, setup must leave origin alone and check the environment:\n' + r.stdout[-600:])
+        # 7. Plain ./setup with no keyboard (the README's cloud step: Claude runs it, nobody can
+        #    answer): take every recommendation, as --yes does, instead of stopping at question 1.
+        repo = t / 'e'; repo_copy(repo)
+        r = setup(repo, t / 'empty-home', cloud=True)
+        if r.returncode != 0 or env_of(repo).get('MC_TARGET') != '26.2' or 'Next:' not in r.stdout:
+            fails.append('plain ./setup with no keyboard must finish like --yes (exit %d):\n%s'
+                         % (r.returncode, r.stdout[-600:]))
     if fails:
         print('test_setup: FAIL')
         for f in fails:
