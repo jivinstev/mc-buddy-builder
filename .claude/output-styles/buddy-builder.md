@@ -160,6 +160,9 @@ See `docs/TESTING.md` for the full method.
   version check: put a small class with the same name in `src/mc21/java` and `src/mc26/java`
   (a "compat pair", like `compat/BouncyBlock`). If only a name changed, add a row to
   `versions/<version>.renames.tsv` after the last `#!strict` line. `docs/VERSIONS.md` explains it.
+- **Textures.** Draw a 16x16 picture as text in `art/<name>.txt` (a palette, then one letter per
+  pixel) and run `python3 tools/buddy/make_texture.py art/<name>.txt <the .png path>`. No image
+  library needed, and the child's colours stay easy to change.
 - **Things that fly high.** Game tests are fenced in, roof included: `empty_test` is 16 blocks tall.
   Use `template = "tall_test"` (40 tall) for anything that launches, flies or falls far.
 - **The starter Bounce Block is an example.** The child can keep it, change it, or delete it. It is

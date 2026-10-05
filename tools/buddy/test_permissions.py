@@ -32,9 +32,13 @@ WORKFLOW = [
     './tools/client-test.sh', 'MC=1.21.1 ./tools/client-test.sh', 'MC=26.2 ./tools/client-test.sh',
     'python3 tools/buddy/rename_mod.py --name "Dragon Mod"', 'python3 tools/buddy/test_rename_mod.py',
     'python3 tools/buddy/test_setup.py', 'python3 tools/check-private-terms.py --staged',
+    'python3 tools/buddy/make_texture.py art/dragon.txt src/main/resources/assets/buddymod/textures/block/dragon.png',
+    'python3 tools/buddy/test_make_texture.py',
     'python3 cloud/check.py', 'bash cloud/ensure.sh java25',
     'git status', 'git diff', 'git log --oneline -5', 'git add -A', 'git commit -m "Add a dragon"',
     'git push -u origin dragon', 'git pull', 'git switch -c dragon', 'git branch', 'git merge main',
+    'git worktree list', 'git worktree add ../my-mod-dragon -b feat/dragon origin/main',
+    'unzip -l mods/buddymod-1.0.jar',
 ]
 # Things that must still stop: a grown-up decides.
 MUST_STOP = ['git push --force origin main', 'git reset --hard', 'git stash', 'sudo apt-get install x']

@@ -79,6 +79,9 @@ Game tests are fenced in by the game, roof included. `empty_test` is a 9x16x9 ro
 goes higher hits the roof and the test reports a weak feature, not a test problem. `tall_test` is the
 same room 40 blocks tall.
 
+New block textures: draw them as text in `art/` and run `tools/buddy/make_texture.py` (see its
+header). `tools/buddy/test_make_texture.py` checks it.
+
 The pause guard is `client/test/ClientTestPauseGuard.java`. `./tools/client-test.sh` runs Gate C on
 macOS (a window opens) or headless Linux (Xvfb), writes the verdict and photo to its signal folder,
 and exits 0 PASS, 1 FAIL, 2 can't run here, 3 no verdict.

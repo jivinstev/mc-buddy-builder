@@ -23,5 +23,7 @@ jobs:
         run: python3 tools/buddy/test_rename_mod.py
       - name: Setup script
         run: python3 tools/buddy/test_setup.py
+      - name: Texture tool
+        run: python3 tools/buddy/test_make_texture.py
       - name: README cloud steps match cloud/
         run: python3 cloud/check_readme.py
