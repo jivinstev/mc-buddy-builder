@@ -16,11 +16,29 @@ when the model makes a mistake.
 | No `git stash` (shared between worktrees) | **Enforced** (`deny`) | `.claude/settings.json` |
 | No force-push, hard reset or force branch delete | **Enforced** (`deny`) | `.claude/settings.json` |
 | No `sudo` | **Enforced** (`deny`) | `.claude/settings.json` |
-| Web browsing and downloads ask first | **Enforced** (`ask`): WebFetch, WebSearch, `curl`, `wget` prompt the grown-up | `.claude/settings.json` |
+| Web browsing asks first | **Enforced** (`ask`): WebFetch and WebSearch prompt the grown-up. Making a mod never needs them | `.claude/settings.json` |
+| Making a mod never stops for approval | **Enforced** (`allow`): the build, the tests, setup, the repo's own scripts, everyday git and edits inside the project. Exact scripts, never folder wildcards | `.claude/settings.json`, checked by `tools/buddy/test_permissions.py` |
 | Mods go only into `MINECRAFT_MODS_DIR` | Behavioural, plus the deploy task only writes there | output style; your build's deploy task |
 | Grown-up asked before anything costly or irreversible | Behavioural | output style |
 | Replies at an early-reader level | Behavioural | output style |
 | Tests green before the child plays | Behavioural; the gates themselves are code | output style, `docs/TESTING.md` |
+
+## Why there are no prompts while making a mod
+
+Every prompt a child meets mid-build is a grown-up being called over for nothing, and a habit of
+clicking Allow without reading. So everything the mod-making workflow runs is allowed outright, and
+only the rules worth a grown-up's attention still stop: web browsing (ask) and anything destructive
+(deny). `curl` and `wget` used to ask too; they no longer do, because in the cloud the environment's
+domain list already limits them, and at home Gradle and Python download freely anyway, so the rule
+added prompts without adding protection.
+
+Two things to know:
+
+- **Trust the folder once.** Claude Code ignores a project's `allow` rules until you accept its trust
+  dialog, which appears the first time you run `claude` in the folder. Until then everything prompts.
+- **Prove it:** `python3 tools/buddy/test_permissions.py` checks the rules (CI runs it), and
+  `--live` drives a real headless Claude Code in its strictest mode through the workflow and fails on
+  any prompt.
 
 ## Tightening further
 

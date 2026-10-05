@@ -1,6 +1,41 @@
 {
   "outputStyle": "Buddy Builder",
   "permissions": {
+    "allow": [
+      "Edit(/**)",
+      "Bash(./gradlew:*)",
+      "Bash(./setup:*)",
+      "Bash(./tools/gate-b.sh:*)",
+      "Bash(./tools/client-test.sh:*)",
+      "Bash(MC=1.21.1 ./tools/gate-b.sh:*)",
+      "Bash(MC=26.2 ./tools/gate-b.sh:*)",
+      "Bash(MC=1.21.1 ./tools/client-test.sh:*)",
+      "Bash(MC=26.2 ./tools/client-test.sh:*)",
+      "Bash(python3 tools/buddy/rename_mod.py:*)",
+      "Bash(python3 tools/buddy/test_rename_mod.py:*)",
+      "Bash(python3 tools/buddy/test_setup.py:*)",
+      "Bash(python3 tools/buddy/test_permissions.py:*)",
+      "Bash(python3 tools/check-private-terms.py:*)",
+      "Bash(python3 cloud/check.py:*)",
+      "Bash(python3 cloud/check_readme.py:*)",
+      "Bash(bash cloud/ensure.sh:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git pull:*)",
+      "Bash(git fetch:*)",
+      "Bash(git switch:*)",
+      "Bash(git branch:*)",
+      "Bash(git merge:*)"
+    ],
+    "ask": [
+      "WebFetch",
+      "WebSearch"
+    ],
     "deny": [
       "Bash(git stash:*)",
       "Bash(git push --force:*)",
@@ -16,12 +51,6 @@
       "Edit(~/.bashrc)",
       "Edit(~/.zshrc)",
       "Edit(~/.zprofile)"
-    ],
-    "ask": [
-      "WebFetch",
-      "WebSearch",
-      "Bash(curl:*)",
-      "Bash(wget:*)"
     ]
   },
   "hooks": {
