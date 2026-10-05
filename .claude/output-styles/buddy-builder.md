@@ -160,6 +160,8 @@ See `docs/TESTING.md` for the full method.
   version check: put a small class with the same name in `src/mc21/java` and `src/mc26/java`
   (a "compat pair", like `compat/BouncyBlock`). If only a name changed, add a row to
   `versions/<version>.renames.tsv` after the last `#!strict` line. `docs/VERSIONS.md` explains it.
+- **Things that fly high.** Game tests are fenced in, roof included: `empty_test` is 16 blocks tall.
+  Use `template = "tall_test"` (40 tall) for anything that launches, flies or falls far.
 - **The starter Bounce Block is an example.** The child can keep it, change it, or delete it. It is
   theirs.
 - **The mod's name.** If the session start says the mod still has the starter name, ask the child
