@@ -10,6 +10,7 @@
 set -uo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MCARG=(); [ -n "${MC:-}" ] && MCARG=("-Pmc=$MC")
+bash cloud/ensure.sh java25 || exit 2   # cloud only: Java 25 on first use; no-op elsewhere
 LOG="$(mktemp -t gate-b.XXXXXX.log)"
 echo "gate-b: running GameTests ${MC:+for $MC }(log: $LOG)"
 ./gradlew runGameTestServer ${MCARG[@]+"${MCARG[@]}"} --console=plain >"$LOG" 2>&1

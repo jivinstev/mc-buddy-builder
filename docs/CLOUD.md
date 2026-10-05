@@ -7,19 +7,21 @@ The README has the four steps. This page has the reasons and the fixes.
 | Piece | Where it lives | Why |
 |---|---|---|
 | Allowed domains | the environment (UI only) | The build downloads Minecraft and NeoForge (`*.mojang.com`, `*.minecraft.net`, `maven.neoforged.net`). The rest are the mod registries and library mavens that mc-mod-version-upgrade uses, so one environment serves both repos. |
-| Setup script | the environment (UI only) | Installs a virtual screen for the real-client test and Java 25 for Minecraft 26.x. It runs once and is cached for later sessions. |
-| `cloud/session_start.sh` | this repo, run by `.claude/settings.json` | Points Gradle at Google's mirror of Maven Central, which doesn't rate-limit cloud machines. Does nothing on your own computer. |
-| `cloud/check.py` | this repo, run by `./setup` | Checks the two above actually took effect, and names any blocked host. |
+| Setup script | the environment (UI only) | **Empty, on purpose.** A setup script blocks the session from opening, and its cache did not reliably hold, so it cost minutes every time. |
+| `cloud/ensure.sh` | this repo | Installs a virtual screen (for the real-client test) and Java 25 (for Minecraft 26.x) if they are missing. A minute or two, once per session. `./setup`, `tools/gate-b.sh` and `tools/client-test.sh` call it; a lock makes a second run wait for the first. |
+| `cloud/session_start.sh` | this repo, run by `.claude/settings.json` | Starts `cloud/ensure.sh` in the background (log: `/tmp/cloud-ensure.log`) so the tools are usually ready before you need them, and points Gradle at Google's mirror of Maven Central, which doesn't rate-limit cloud machines. Returns at once. Does nothing on your own computer. |
+| `cloud/check.py` | this repo, run by `./setup` | Checks every allowed host is reachable, runs `cloud/ensure.sh`, and names anything still missing. |
 
-The README's copies of the domain list and setup script must match `cloud/allowed-domains.txt` and
-`cloud/setup.sh`; CI fails if they drift (`python3 cloud/check_readme.py`).
+The README's copy of the domain list must match `cloud/allowed-domains.txt`; CI fails if they
+drift (`python3 cloud/check_readme.py`).
 
 ## Things to know
 
 - **One repo per session.** Claude Code skips a repo's session hooks when a session has several
   repos attached. Start one session per repo.
-- **Changing the setup script or domains rebuilds the cache.** The next new session runs the script
-  again (a few minutes).
+- **Changing the domains needs a new session.** A running session keeps the list it started with.
+- **The first build is the slow part** (several minutes): Gradle downloads and decompiles Minecraft.
+  Nothing can usefully do that ahead of time without blocking the session, so it happens on first build.
 - **You can't play in the cloud.** There's no Minecraft to deploy into. Pull your copy and run
   `./gradlew deployToMods` at home.
 - **Making your own copy.** In the cloud, GitHub access is limited to the repos attached to the

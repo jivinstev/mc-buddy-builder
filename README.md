@@ -49,20 +49,10 @@ Nothing to install. One environment works for this repo and for
      thedarkcolour.github.io
      packages.adoptium.net
      ```
-   - **Setup script:** paste
-     ```bash
-     apt-get update
-     # A virtual screen and software OpenGL, for the real-client test (Gate C).
-     apt-get install -y xvfb mesa-utils libgl1-mesa-dri
-     # Java 25, which Minecraft 26.x needs. Java 21 is already installed.
-     install -d /etc/apt/keyrings
-     curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg
-     echo "deb [signed-by=/etc/apt/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb noble main" > /etc/apt/sources.list.d/adoptium.list
-     apt-get update
-     apt-get install -y temurin-25-jdk
-     ```
-3. **Start a session** on your copy, in that environment, and type `run ./setup`. It checks every host
-   and tool and names anything missing.
+   - **Setup script:** leave it empty.
+3. **Start a session** on your copy, in that environment. It opens straight away. Type
+   `run ./setup`: it checks every host and installs the two missing tools (a virtual screen and
+   Java 25) the first time, which takes a minute or two.
 
 In the cloud you build and test. To play, pull your copy on your own computer and run
 `./gradlew deployToMods`. More: [docs/CLOUD.md](docs/CLOUD.md).
