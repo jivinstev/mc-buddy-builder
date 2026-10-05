@@ -207,6 +207,7 @@ def main():
     a = ap.parse_args()
     ask = Ask(a)
     env = read_env()
+    cloud = os.environ.get('CLAUDE_CODE_REMOTE') == 'true'
     notes, changes = [], {}
 
     print('1. Tools')
@@ -273,7 +274,10 @@ def main():
 
     print('4. Where your copy lives')
     r = remotes()
-    if is_upstream(r.get('origin')):
+    if cloud:
+        print('   cloud session: GitHub is managed by the session. To keep your own copy, use')
+        print('   "Use this template" on GitHub and start the session on that repo.')
+    elif is_upstream(r.get('origin')):
         ready, why_not = gh_ready()
         default = 'private' if ready else 'local'
         if not ready:
@@ -303,6 +307,14 @@ def main():
             print('   .env.local is already up to date')
         run(['git', 'config', 'core.hooksPath', '.githooks'])
         print('   git hooks: on')
+
+    if cloud:
+        print('6. Cloud environment')
+        code, out = run([sys.executable, str(ROOT / 'cloud/check.py')])
+        print('   ' + out.replace('\n', '\n   '))
+        if code != 0:
+            notes.append('the cloud environment is not ready yet; see the lines above')
+        notes.append('in the cloud you build and test. To play, run ./gradlew deployToMods on your own computer.')
 
     print()
     for n in notes:

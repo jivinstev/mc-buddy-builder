@@ -3,72 +3,87 @@
 **A Claude Code mode that lets a young child build their own Minecraft mods, with a grown-up beside
 them and the tests doing the code review.**
 
-The child says what they want, out loud. Claude answers in short sentences a grown-up reads back,
-breaks giant ideas into small playable pieces, and handles all the engineering itself: branches,
-builds, tests, merging, deploying. The grown-up is only pulled in for real decisions, such as
-anything that costs money, can't be undone, or goes outside the project.
-
 ```text
 Child:   I want a dragon that breathes fire and gives you treasure!
 Claude:  WOW, a treasure dragon! 🐉🔥 First I'll make your dragon that flies and breathes
-         fire. Do you want to play with that first? Or should I make it drop treasure too,
-         before you try it?
+         fire. Do you want to play with that first? Or should I make it drop treasure too?
 ```
 
-## Why it works: the tests are the review
+You get a working NeoForge mod for Minecraft 1.21.1 or 26.2, with one example (a Bounce Block) and
+three test gates already passing: unit tests, a headless game server, and a real game client. Claude
+won't call a feature done until all three pass.
 
-A child can't read code, so "it's done" has to mean it works in the game. Buddy Builder holds Claude
-to three gates before anything reaches the child:
-
-| Gate | What runs | What it catches |
-|---|---|---|
-| A | Unit tests | Logic bugs |
-| B | A headless game server | Crashes and broken registration that still compile |
-| C | A real Minecraft client, scripted | What the player sees and hears |
-
-[docs/TESTING.md](docs/TESTING.md) has the method and the rules that make those gates trustworthy.
-
-## What's in this repo
-
-| Path | What it is |
-|---|---|
-| `.claude/output-styles/buddy-builder.md` | The mode itself |
-| `.claude/settings.json` | Turns the mode on and loads the enforced guardrails |
-| `docs/SETUP.md` | Installing it in your mod project, switching it on and off |
-| `docs/GUARDRAILS.md` | Which safety rules are enforced and which are behavioural |
-| `docs/TESTING.md` | The three gates and the four rules |
-| `docs/WORKFLOW.md` | How several sessions share one project without losing work |
-| `docs/VERSIONS.md` | How one source tree builds two Minecraft versions |
-| `setup`, `tools/buddy/` | First-run setup, renaming the mod, the version pipeline |
-| `src/` | The starter mod: the Bounce Block and its three gates |
-
-## Quick start
+## Quick start: on your computer
 
 ```bash
 git clone https://github.com/jivinstev/mc-buddy-builder.git my-mod
-cd my-mod
-./setup          # picks your Minecraft version and mods folder, names the mod, makes your copy
-claude           # then let the child say hi
+cd my-mod && ./setup     # finds your Minecraft, names the mod, makes your private copy
+claude                   # then let your child say hi
 ```
 
-You get a working NeoForge mod for Minecraft 1.21.1 or 26.2 with one example, a Bounce Block, and all
-three gates already passing. Details in [docs/SETUP.md](docs/SETUP.md). To add the mode to a mod
-you already have, copy `.claude/` into it instead. To install or port existing mods as well, pair it with
+Needs git, Python 3, Java 21 and [Claude Code](https://docs.claude.com/en/docs/claude-code/setup).
+
+## Quick start: in the cloud
+
+Nothing to install. One environment works for this repo and for
 [mc-mod-version-upgrade](https://github.com/jivinstev/mc-mod-version-upgrade).
 
-## Status
+1. **Make your copy:** on GitHub, **Use this template → Create a new repository → Private**.
+2. **Make the environment (once):** at [claude.ai/code](https://claude.ai/code), open the environment
+   menu → **Add environment**. Name it `Minecraft modding`, then:
+   - **Network access:** Custom. Tick **Also include default list of common package managers**.
+     Paste into **Allowed domains**:
+     ```text
+     maven.neoforged.net
+     *.minecraft.net
+     *.mojang.com
+     api.modrinth.com
+     cdn.modrinth.com
+     api.curseforge.com
+     *.forgecdn.net
+     maven.parchmentmc.org
+     maven.fabricmc.net
+     maven.blamejared.com
+     maven.ithundxr.dev
+     dl.cloudsmith.io
+     thedarkcolour.github.io
+     packages.adoptium.net
+     ```
+   - **Setup script:** paste
+     ```bash
+     apt-get update
+     # A virtual screen and software OpenGL, for the real-client test (Gate C).
+     apt-get install -y xvfb mesa-utils libgl1-mesa-dri
+     # Java 25, which Minecraft 26.x needs. Java 21 is already installed.
+     install -d /etc/apt/keyrings
+     curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg
+     echo "deb [signed-by=/etc/apt/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb noble main" > /etc/apt/sources.list.d/adoptium.list
+     apt-get update
+     apt-get install -y temurin-25-jdk
+     ```
+3. **Start a session** on your copy, in that environment, and type `run ./setup`. It checks every host
+   and tool and names anything missing.
 
-Early. The mode, guardrails, testing method and starter mod are here. CI builds the starter on both
-Minecraft versions and runs all three gates on every push.
+In the cloud you build and test. To play, pull your copy on your own computer and run
+`./gradlew deployToMods`. More: [docs/CLOUD.md](docs/CLOUD.md).
+
+## More
+
+| | |
+|---|---|
+| [docs/SETUP.md](docs/SETUP.md) | Setup in detail; adding the mode to a mod you already have |
+| [docs/TESTING.md](docs/TESTING.md) | The three gates, and the rules that make them trustworthy |
+| [docs/GUARDRAILS.md](docs/GUARDRAILS.md) | Which safety rules are enforced and which are behavioural |
+| [docs/WORKFLOW.md](docs/WORKFLOW.md) | Several sessions sharing one project without losing work |
+| [docs/VERSIONS.md](docs/VERSIONS.md) | One source tree, two Minecraft versions |
+
+To install other people's mods or port ones stuck on an old version, pair it with
+[mc-mod-version-upgrade](https://github.com/jivinstev/mc-mod-version-upgrade).
 
 ## Contributing
 
-`tools/check-private-terms.py` runs on every push and pull request. It keeps personal names and
-family details out of the repo, including commit messages. Install the local hooks with:
-
-```bash
-git config core.hooksPath .githooks
-```
+CI runs every gate on both Minecraft versions, plus a check that keeps personal names out of the repo
+(commit messages included). Install the local hooks with `git config core.hooksPath .githooks`.
 
 ## Licence
 

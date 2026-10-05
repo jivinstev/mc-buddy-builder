@@ -17,9 +17,12 @@ def repo_copy(dst):
     subprocess.run(['git', 'remote', 'set-url', 'origin', 'https://github.com/jivinstev/mc-buddy-builder.git'], cwd=dst, check=True)
 
 
-def setup(repo, home, *args):
+def setup(repo, home, *args, cloud=False):
     env = dict(os.environ, HOME=str(home), XDG_DATA_HOME=str(home / '.local/share'))
     env.pop('MINECRAFT_DIR', None)
+    env.pop('CLAUDE_CODE_REMOTE', None)
+    if cloud:
+        env['CLAUDE_CODE_REMOTE'] = 'true'
     return subprocess.run([sys.executable, 'tools/buddy/setup.py', *args], cwd=repo, env=env,
                           capture_output=True, text=True)
 
@@ -83,6 +86,12 @@ def main():
         r = setup(repo, t / 'empty-home', '--yes', '--repo', 'local', '--name', 'Lava Pets')
         if 'mod_id=lavapets' not in (repo / 'gradle.properties').read_text():
             fails.append('--name did not rename the mod:\n' + r.stdout[-600:])
+        # 6. In a cloud session: never touch the remotes, and report on the environment.
+        repo = t / 'd'; repo_copy(repo)
+        r = setup(repo, t / 'empty-home', '--yes', cloud=True)
+        remotes = subprocess.run(['git', 'remote'], cwd=repo, capture_output=True, text=True).stdout.split()
+        if remotes != ['origin'] or '6. Cloud environment' not in r.stdout:
+            fails.append('in the cloud, setup must leave origin alone and check the environment:\n' + r.stdout[-600:])
     if fails:
         print('test_setup: FAIL')
         for f in fails:
