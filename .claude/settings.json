@@ -1,0 +1,27 @@
+{
+  "outputStyle": "Buddy Builder",
+  "permissions": {
+    "deny": [
+      "Bash(git stash:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push --force-with-lease:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git branch -D:*)",
+      "Bash(sudo:*)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.config/gcloud/**)",
+      "Edit(~/.ssh/**)",
+      "Edit(~/.bashrc)",
+      "Edit(~/.zshrc)",
+      "Edit(~/.zprofile)"
+    ],
+    "ask": [
+      "WebFetch",
+      "WebSearch",
+      "Bash(curl:*)",
+      "Bash(wget:*)"
+    ]
+  }
+}
