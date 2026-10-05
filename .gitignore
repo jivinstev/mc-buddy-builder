@@ -2,3 +2,13 @@
 .env.local
 .claude/settings.local.json
 __pycache__/
+
+# Build and game output. `git add -A` is part of the workflow, so none of it may show up.
+.gradle/
+build/
+run/
+logs/
+config/
+defaultconfigs/
+mods/
+.cache/
