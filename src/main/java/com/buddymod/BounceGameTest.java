@@ -4,7 +4,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.animal.Cow;
+import net.minecraft.world.entity.LivingEntity;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
@@ -23,7 +23,7 @@ public class BounceGameTest {
     public static void aCowDroppedOnTheBlockBouncesAndIsNotHurt(GameTestHelper helper) {
         BlockPos pad = new BlockPos(4, 1, 4);
         helper.setBlock(pad, ModContent.BOUNCE_BLOCK.get());
-        Cow cow = helper.spawn(EntityType.COW, new BlockPos(4, 12, 4));
+        LivingEntity cow = helper.spawn(EntityType.COW, new BlockPos(4, 12, 4));
         float startHealth = cow.getHealth();
         double padTop = helper.absolutePos(pad).getY() + 1.0;
         double[] lowest = {Double.MAX_VALUE};

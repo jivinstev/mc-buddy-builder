@@ -1003,3 +1003,8 @@ re:\bScreen\.hasShiftDown\(\)	net.minecraft.client.Minecraft.getInstance().hasSh
 re:\n[ \t]*@OnlyIn\([^)]*\)[ \t]*	
 
 #!strict  # ---- below here rules ARE checked: add your mod's own rows here ----
+
+# -- Starter rows. Add your own below this line.
+# 26.2's DeferredRegister.Blocks.registerBlock takes the Properties as a Supplier (it stamps
+# the block's id on them), where 1.21.1 takes them directly. Wrap the shared form in a lambda.
+re:(\.registerBlock\(\s*"[a-z0-9_]+",\s*[\w.]+::new,\s*)(BlockBehaviour\.Properties\.)	\1() -> \2
