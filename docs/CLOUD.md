@@ -1,6 +1,6 @@
 # Building in a Claude Code cloud session
 
-The README has the four steps. This page has the reasons and the fixes.
+The README has the steps. This page has the reasons and the fixes.
 
 ## What each piece is for
 

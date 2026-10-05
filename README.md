@@ -51,11 +51,14 @@ Nothing to install. One environment works for this repo and for
      ```
    - **Setup script:** leave it empty.
 3. **Start a session** on your copy, in that environment. It opens straight away. Type
-   `run ./setup`: it checks every host and installs the two missing tools (a virtual screen and
-   Java 25) the first time, which takes a minute or two.
+   `run ./setup --yes`: it checks every host and installs anything missing (a virtual screen and
+   Java 25) the first time, which takes a minute or two. Look for `ready` under
+   **6. Cloud environment**.
+4. **Let your child say what they want to make.** Claude builds it and runs all three gates.
 
-In the cloud you build and test. To play, pull your copy on your own computer and run
-`./gradlew deployToMods`. More: [docs/CLOUD.md](docs/CLOUD.md).
+In the cloud you build and test. To play, on your own computer: clone your copy, run `./setup` once
+(it finds your Minecraft), check out the branch the session pushed, and run `./gradlew deployToMods`.
+More: [docs/CLOUD.md](docs/CLOUD.md).
 
 ## More
 
