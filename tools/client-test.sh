@@ -48,6 +48,10 @@ fi
 wait "$PID" 2>/dev/null
 grep -aE "Minecraft [0-9.]+ \(NeoForge" "$SIG/run.log" | head -1
 cat "$SIG/result"
-shot="$(find run -path '*screenshots*' -name 'bounce_block*.png' -newer "$SIG/.started" 2>/dev/null | head -1)"
-if [ -n "$shot" ]; then cp "$shot" "$SIG/" && echo "photo: $SIG/$(basename "$shot")"; else echo "client-test: no photo was saved (look for screenshots under run/)"; fi
+# Every photo this run took, not only the starter block's: a new block's test names its own.
+shots=0
+while IFS= read -r shot; do
+  cp "$shot" "$SIG/" && echo "photo: $SIG/$(basename "$shot")" && shots=$((shots + 1))
+done < <(find run -path '*screenshots*' -name '*.png' -newer "$SIG/.started" 2>/dev/null | sort)
+[ "$shots" -gt 0 ] || echo "client-test: no photo was saved (look for screenshots under run/)"
 grep -q '^PASS' "$SIG/result"
