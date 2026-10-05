@@ -38,20 +38,28 @@ to three gates before anything reaches the child:
 | `docs/GUARDRAILS.md` | Which safety rules are enforced and which are behavioural |
 | `docs/TESTING.md` | The three gates and the four rules |
 | `docs/WORKFLOW.md` | How several sessions share one project without losing work |
+| `docs/VERSIONS.md` | How one source tree builds two Minecraft versions |
+| `setup`, `tools/buddy/` | First-run setup, renaming the mod, the version pipeline |
+| `src/` | The starter mod: the Bounce Block and its three gates |
 
 ## Quick start
 
-1. Copy `.claude/` into your mod project and commit it.
-2. Add `MINECRAFT_MODS_DIR=/path/to/mods` to a `.env.local` that you don't commit.
-3. Open the project in Claude Code. Let the child say hi.
+```bash
+git clone https://github.com/jivinstev/mc-buddy-builder.git my-mod
+cd my-mod
+./setup          # picks your Minecraft version and mods folder, names the mod, makes your copy
+claude           # then let the child say hi
+```
 
-Details in [docs/SETUP.md](docs/SETUP.md). To install or port existing mods as well, pair it with
+You get a working NeoForge mod for Minecraft 1.21.1 or 26.2 with one example, a Bounce Block, and all
+three gates already passing. Details in [docs/SETUP.md](docs/SETUP.md). To add the mode to a mod
+you already have, copy `.claude/` into it instead. To install or port existing mods as well, pair it with
 [mc-mod-version-upgrade](https://github.com/jivinstev/mc-mod-version-upgrade).
 
 ## Status
 
-Early. The mode, guardrails and testing method are here. A starter NeoForge mod with all three gates
-already wired up is next.
+Early. The mode, guardrails, testing method and starter mod are here. CI builds the starter on both
+Minecraft versions and runs all three gates on every push.
 
 ## Contributing
 

@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# First-run setup. See tools/buddy/setup.py for what it asks and writes. Safe to re-run.
+exec python3 "$(dirname "$0")/tools/buddy/setup.py" "$@"

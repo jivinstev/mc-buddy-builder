@@ -96,8 +96,8 @@ Some of these are **enforced** by `.claude/settings.json` (the tool simply refus
 
 - **Only work inside this project** and any folders the grown-up added with `--add-dir` or
   `permissions.additionalDirectories`. Don't modify files anywhere else on the computer.
-- **Only install mods into the one mods folder** named by `MINECRAFT_MODS_DIR` in `.env.local`.
-  Never write mod jars anywhere else.
+- **Only install mods into the one mods folder** named in `.env.local`
+  (`MINECRAFT_MODS_DIR_<version>`, or `MINECRAFT_MODS_DIR`). Never write mod jars anywhere else.
 - Mod registries (Modrinth, CurseForge) and official Minecraft / NeoForge / mod documentation are
   fine. **Before any wider web browsing, ask the grown-up first.**
 - If a request needs something outside these bounds, don't do it. Ask the grown-up and wait.
@@ -118,9 +118,9 @@ every request.
 2. **After your tests are green: sync again, then deploy.**
    - `git fetch origin && git merge origin/main`, resolve conflicts, and **re-run the tests**. A merge
      can break a green branch.
-   - Then deploy, and confirm the jar in the mods folder really contains your new classes
-     (`unzip -l "$MINECRAFT_MODS_DIR"/<modid>-*.jar | grep <YourClass>`). Another session shares
-     that folder and may have overwritten it.
+   - Then deploy with `./gradlew deployToMods`, and confirm the jar in the mods folder really
+     contains your new classes (`unzip -l <mods folder>/<modid>-*.jar | grep <YourClass>`). Another
+     session shares that folder and may have overwritten it.
 3. **Once the child has played it and is happy: merge to main and push.**
    - From your branch: `git fetch origin && git merge origin/main`, then `git push origin HEAD:main`.
      If the push is rejected, someone landed first: fetch, merge, re-test, push again.
@@ -134,12 +134,14 @@ work. Use a temporary WIP commit instead. (This one is enforced.)
 A child can't review code, so the tests are the review. Before you say "try it!":
 - **Gate A — unit tests** for the logic. Put every decision you can into a plain class with no
   Minecraft imports, and test it.
-- **Gate B — headless game tests** (`./gradlew runGameTestServer`): the mod loads, registers, spawns
-  and runs on a real server. Read the log for the `required tests passed` line; the task can exit 0
+  (`./gradlew build`)
+- **Gate B — headless game tests** (`./tools/gate-b.sh`): the mod loads, registers, spawns and runs
+  on a real server. The script reads the verdict from the log, because the Gradle task can exit 0
   without running anything.
-- **Gate C — a real client test** for anything the child can see or hear: a scripted client that
-  creates a world, does the thing the way a player would, and writes PASS or FAIL. For a "the player
-  sees or hears X" bug, reproduce it here first, watch it fail, then fix it.
+- **Gate C — a real client test** for anything the child can see or hear (`./tools/client-test.sh`):
+  a scripted client that creates a world, does the thing the way a player would, and writes PASS or
+  FAIL. For a "the player sees or hears X" bug, reproduce it here first, watch it fail, then fix it.
+  `src/main/java/<package>/client/test/BuddyClientTest.java` is the example to copy.
 - **Look at the screenshots.** A test that only checks a file exists will pass on a picture of the
   wrong thing.
 
@@ -148,6 +150,22 @@ thing to avoid. A merge to main is not delivery; the jar in the mods folder is. 
 to restart Minecraft.
 
 See `docs/TESTING.md` for the full method.
+
+## This project's shape
+
+- **One Minecraft version at a time.** `.env.local` says which (`MC_TARGET`); every build, test and
+  deploy uses it. The project can build another version too (`-Pmc=1.21.1` or `-Pmc=26.2`), and
+  the upstream Buddy Builder CI builds both, but a family only needs to test the version they play.
+- **Write shared code once** in `src/main/java`. If one version needs different code, don't add a
+  version check: put a small class with the same name in `src/mc21/java` and `src/mc26/java`
+  (a "compat pair", like `compat/BouncyBlock`). If only a name changed, add a row to
+  `versions/<version>.renames.tsv` after the last `#!strict` line. `docs/VERSIONS.md` explains it.
+- **The starter Bounce Block is an example.** The child can keep it, change it, or delete it. It is
+  theirs.
+- **The mod's name.** If the session start says the mod still has the starter name, ask the child
+  what their mod is called before building anything, then run `/name-my-mod`.
+- **Updates to Buddy Builder itself** arrive from the `upstream` remote; `/update-buddy-builder`
+  brings them in. Only do that when the grown-up asks.
 
 ## Leaving the mode
 

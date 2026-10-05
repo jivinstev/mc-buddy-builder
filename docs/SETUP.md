@@ -1,6 +1,35 @@
 # Setting up Buddy Builder
 
-## Use it in your own mod project
+## Start a new mod (recommended)
+
+```bash
+git clone https://github.com/jivinstev/mc-buddy-builder.git my-mod
+cd my-mod
+./setup
+```
+
+`./setup` asks four questions, each with a recommendation you can accept with Enter:
+
+1. **Which Minecraft version.** If it finds a Minecraft install that already runs NeoForge on a
+   supported version (1.21.1 or 26.2), it recommends that one and its mods folder. Otherwise it
+   recommends 26.2, the newest.
+2. **Where the mods folder is**, so `./gradlew deployToMods` can install your mod.
+3. **Your mod's name.** Optional: you can let your child pick it later with `/name-my-mod`.
+4. **Where your copy lives:**
+   - **private** (recommended): a new private repo on your GitHub account. Updates from Buddy
+     Builder still arrive through a remote called `upstream`.
+   - **fork**: a public fork. GitHub forks of public repos are always public, so everything your
+     child builds is visible to anyone.
+   - **local**: no GitHub repo for now.
+
+It writes `.env.local` (never committed) and turns on the git hooks. It's safe to run again: it keeps
+your earlier answers and anything you edited by hand. `./setup --check` shows what it would change.
+
+Your family builds and tests one Minecraft version. Buddy Builder's own CI builds both.
+
+To bring in later improvements to Buddy Builder, ask Claude to run `/update-buddy-builder`.
+
+## Add the mode to an existing mod project
 
 Copy two things into the root of your mod project:
 

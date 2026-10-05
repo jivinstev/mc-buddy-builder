@@ -17,3 +17,7 @@ jobs:
         run: python3 tools/check-private-terms.py --commits HEAD
       - name: Settings parse
         run: python3 -c "import json; json.load(open('.claude/settings.json'))"
+      - name: Rename tool
+        run: python3 tools/buddy/test_rename_mod.py
+      - name: Setup script
+        run: python3 tools/buddy/test_setup.py

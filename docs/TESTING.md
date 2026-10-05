@@ -8,8 +8,8 @@ of months of building mods this way, each because something passed every check a
 | Gate | What runs | What it can see | Typical cost |
 |---|---|---|---|
 | **A** | Plain unit tests | Logic: maths, rules, state machines | seconds |
-| **B** | Headless game-test server (`./gradlew runGameTestServer`) | Loading, registration, server behaviour, saving and loading | minutes |
-| **C** | A real Minecraft client, driven by a test inside the game | What the player sees and hears: rendering, sound, menus, singleplayer-only paths | 1–5 minutes a test |
+| **B** | Headless game-test server (`./tools/gate-b.sh`) | Loading, registration, server behaviour, saving and loading | minutes |
+| **C** | A real Minecraft client, driven by a test inside the game (`./tools/client-test.sh`) | What the player sees and hears: rendering, sound, menus, singleplayer-only paths | 1–5 minutes a test |
 
 Each gate catches what the one before it can't. A feature that touches anything the child will see
 or hear needs all three.
@@ -65,7 +65,16 @@ Two things that make client tests trustworthy:
 - [ ] The deployed jar contains the new classes
 - [ ] The grown-up knows to restart Minecraft
 
-## Coming next
+## In this repo
 
-A starter NeoForge mod with all three gates already wired up, including the pause guard, a photo
-helper and a Linux launcher, is planned for this repo.
+The starter mod has all three gates wired up around one example block:
+
+| Gate | File | What it proves |
+|---|---|---|
+| A | `src/test/java/.../BounceMathTest.java` | The bounce has a floor and a cap, and always goes up |
+| B | `src/main/java/.../BounceGameTest.java` | A cow dropped on the block bounces and takes no damage |
+| C | `src/main/java/.../client/test/BuddyClientTest.java` | Real model, name and creative tab; a Survival player dropped 30 blocks bounces unhurt; a photo |
+
+The pause guard is `client/test/ClientTestPauseGuard.java`. `./tools/client-test.sh` runs Gate C on
+macOS (a window opens) or headless Linux (Xvfb), writes the verdict and photo to its signal folder,
+and exits 0 PASS, 1 FAIL, 2 can't run here, 3 no verdict.
