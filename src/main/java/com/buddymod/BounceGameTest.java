@@ -35,8 +35,11 @@ public class BounceGameTest {
             boolean landed = lowest[0] < padTop + 0.2;
             if (landed) highestAfterLanding[0] = Math.max(highestAfterLanding[0], y);
             helper.assertTrue(landed, "the cow has not reached the block yet");
-            helper.assertTrue(highestAfterLanding[0] > lowest[0] + 1.5,
-                    "the cow landed but has not bounced back up yet");
+            // 3.5 blocks: the minimum bounce alone reaches about 3, so passing needs the cow's
+            // real landing speed to have been used.
+            helper.assertTrue(highestAfterLanding[0] > lowest[0] + 3.5,
+                    "the cow bounced only " + String.format("%.2f", highestAfterLanding[0] - lowest[0])
+                            + " blocks after a 10-block drop");
             helper.assertTrue(cow.isAlive() && cow.getHealth() >= startHealth,
                     "landing on a Bounce Block must not hurt (health " + cow.getHealth() + ")");
         });

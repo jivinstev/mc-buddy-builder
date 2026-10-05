@@ -12,7 +12,7 @@ set -uo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"; cd "$REPO"
 MODID="$(sed -n 's/^mod_id=//p' gradle.properties)"
 SIG="${SIG:-${TMPDIR:-/tmp}/${MODID}-client}"; TIMEOUT="${TIMEOUT:-900}"
-rm -rf "$SIG"; mkdir -p "$SIG"
+rm -rf "$SIG"; mkdir -p "$SIG"; touch "$SIG/.started"
 MCARG=(); [ -n "${MC:-}" ] && MCARG=("-Pmc=$MC")
 
 RUN=()
@@ -47,6 +47,6 @@ fi
 wait "$PID" 2>/dev/null
 grep -aE "Minecraft [0-9.]+ \(NeoForge" "$SIG/run.log" | head -1
 cat "$SIG/result"
-shot="$(find run -path '*screenshots*' -name 'bounce_block*.png' -newer "$SIG/run.log" 2>/dev/null | head -1)"
-[ -n "$shot" ] && cp "$shot" "$SIG/" && echo "photo: $SIG/$(basename "$shot")"
+shot="$(find run -path '*screenshots*' -name 'bounce_block*.png' -newer "$SIG/.started" 2>/dev/null | head -1)"
+if [ -n "$shot" ]; then cp "$shot" "$SIG/" && echo "photo: $SIG/$(basename "$shot")"; else echo "client-test: no photo was saved (look for screenshots under run/)"; fi
 grep -q '^PASS' "$SIG/result"

@@ -29,6 +29,9 @@ public abstract class BouncyBlock extends Block {
         }
         entity.setDeltaMovement(motion.x, bounceVelocity(motion.y), motion.z);
         entity.resetFallDistance();
-        entity.hurtMarked = true;
+        // No `hurtMarked = true` here. On the server it sends the server's copy of the speed to
+        // the client, and for a PLAYER the server's copy is near zero (the client moves the
+        // player). Measured: it cut a 30-block drop's bounce from ~11 blocks to the 4-block
+        // floor on this version only. Vanilla's slime block doesn't set it either.
     }
 }

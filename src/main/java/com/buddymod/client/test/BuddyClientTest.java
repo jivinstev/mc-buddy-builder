@@ -208,7 +208,9 @@ public final class BuddyClientTest {
         if (ticks < 170 || healthAfter < 0) return;
         double bounce = highestAfterLanding - lowestY;
         boolean landed = lowestY < base.getY() + 1.3;
-        boolean bounced = landed && bounce > 1.5;
+        // From 30 blocks the speed cap gives about 11 blocks; the minimum bounce alone gives about
+        // 4. Asking for 6 means a version that ignores the landing speed fails here.
+        boolean bounced = landed && bounce > 6.0;
         boolean unhurt = healthAfter >= maxHealth - 0.01;
         if (!(bounced && unhurt)) failures++;
         RESULTS.add(String.format("drop{landed=%s bounceHeight=%.2f health=%.1f/%.1f}",
