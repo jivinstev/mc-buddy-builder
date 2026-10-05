@@ -66,7 +66,7 @@ def main():
         for p in problems:
             print('  - ' + p)
         print('Fix it in the cloud environment settings (environment menu in the session title bar, then Edit).')
-        print('Steps: https://github.com/jivinstev/mc-buddy-builder#build-in-the-cloud')
+        print('Steps: https://github.com/jivinstev/mc-buddy-builder#quick-start-in-the-cloud')
         return 1
     print('cloud/check.py: ready. %d hosts reachable, xvfb and Java 21 + 25 installed.' % checked)
     return 0
