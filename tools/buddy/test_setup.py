@@ -23,7 +23,8 @@ def repo_copy(dst):
 
 
 def setup(repo, home, *args, cloud=False):
-    env = dict(os.environ, HOME=str(home), XDG_DATA_HOME=str(home / '.local/share'), BUDDY_SETUP_OFFLINE='1')
+    env = dict(os.environ, HOME=str(home), XDG_DATA_HOME=str(home / '.local/share'), BUDDY_SETUP_OFFLINE='1',
+               GIT_AUTHOR_NAME='t', GIT_AUTHOR_EMAIL='t@t', GIT_COMMITTER_NAME='t', GIT_COMMITTER_EMAIL='t@t')
     env.pop('MINECRAFT_DIR', None)
     env.pop('CLAUDE_CODE_REMOTE', None)
     if cloud:
@@ -97,9 +98,16 @@ def main():
         r = setup(repo, t / 'empty-home', '--check', '--repo', 'local')
         if (repo / '.env.local').exists() or 'would' not in r.stdout:
             fails.append('--check wrote something or did not report:\n' + r.stdout[-600:])
+        subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'start', '--allow-empty'], cwd=repo)
+        subprocess.run(['git', 'branch', '-M', 'some-pr-branch'], cwd=repo)
         r = setup(repo, t / 'empty-home', '--yes', '--repo', 'local', '--name', 'Lava Pets')
         if 'mod_id=lavapets' not in (repo / 'gradle.properties').read_text():
             fails.append('--name did not rename the mod:\n' + r.stdout[-600:])
+        git = lambda *a: subprocess.run(['git', *a], cwd=repo, capture_output=True, text=True).stdout.strip()
+        if git('log', '-1', '--format=%s') != 'Name the mod: Lava Pets' or git('status', '--porcelain', '--', 'src', 'gradle.properties'):
+            fails.append('the rename was not committed (the first push would have the starter name)')
+        if git('branch', '--show-current') != 'main':
+            fails.append('a copy cloned from another branch must start on main, got ' + git('branch', '--show-current'))
         # 6. In a cloud session: never touch the remotes, and report on the environment.
         repo = t / 'd'; repo_copy(repo)
         r = setup(repo, t / 'empty-home', '--yes', cloud=True)

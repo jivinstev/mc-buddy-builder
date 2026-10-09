@@ -193,6 +193,10 @@ def set_up_repo(choice, name, dry):
     if choice == 'skip':
         return 'skipped: origin still points at Buddy Builder itself'
     steps = []
+    # The family's copy starts on main, even when Buddy Builder was cloned from another branch:
+    # the workflow branches from origin/main and lands work there.
+    if run(['git', 'branch', '--show-current'])[1] not in ('main', ''):
+        steps.append(['git', 'branch', '-M', 'main'])
     if choice in ('private', 'local'):
         steps.append(['git', 'remote', 'rename', 'origin', 'upstream'])
     if choice == 'private':
@@ -269,6 +273,10 @@ def main():
         print('   ' + out.replace('\n', '\n   '))
         if code != 0:
             notes.append('the mod was not renamed; try again with /name-my-mod')
+        else:
+            # Commit it, so the copy pushed below (and every branch made from main) has the new name.
+            run(['git', 'add', '-A'])
+            run(['git', '-c', 'core.hooksPath=/dev/null', 'commit', '-q', '-m', 'Name the mod: ' + name])
     repo_name = re.findall(r'(?m)^mod_id=(.*)$', (ROOT / 'gradle.properties').read_text())[0]
 
     print('4. Where your copy lives')
