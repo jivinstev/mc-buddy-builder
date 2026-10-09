@@ -85,6 +85,12 @@ def static():
         for n, line in enumerate(doc.read_text(encoding='utf-8').splitlines(), 1):
             if re.search(r'worktree add\s+\.\.', line):
                 fails.append('%s:%d puts a worktree outside the project (use .worktrees/<name>)' % (doc.relative_to(ROOT), n))
+    # Test output Claude reads (logs, the Gate C photo) must land inside the project, or reading it
+    # stops the session for permission. Scripts write under build/ instead of the temp folder.
+    for script in sorted(ROOT.glob('tools/*.sh')):
+        for n, line in enumerate(script.read_text(encoding='utf-8').splitlines(), 1):
+            if re.search(r'\bmktemp\b|\$\{?TMPDIR|(^|[\s"=])/tmp/', line) and not line.lstrip().startswith('#'):
+                fails.append('%s:%d writes outside the project (use build/): %s' % (script.relative_to(ROOT), n, line.strip()))
     if '.worktrees/' not in (ROOT / '.gitignore').read_text().split():
         fails.append('.worktrees/ must be in .gitignore, or `git add -A` picks up worktrees')
     return fails

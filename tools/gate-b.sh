@@ -11,7 +11,8 @@ set -uo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MCARG=(); [ -n "${MC:-}" ] && MCARG=("-Pmc=$MC")
 bash cloud/ensure.sh java25 || exit 2   # cloud only: Java 25 on first use; no-op elsewhere
-LOG="$(mktemp -t gate-b.XXXXXX.log)"
+# Inside the project (build/ is git-ignored), so reading the log never asks for permission.
+mkdir -p build; LOG="build/gate-b.log"
 echo "gate-b: running GameTests ${MC:+for $MC }(log: $LOG)"
 ./gradlew runGameTestServer ${MCARG[@]+"${MCARG[@]}"} --console=plain >"$LOG" 2>&1
 grep -aE "Minecraft [0-9.]+ \(NeoForge" "$LOG" | head -1
