@@ -1,7 +1,5 @@
 {
   "outputStyle": "Buddy Builder",
-  "tui": "fullscreen",
-  "viewMode": "focus",
   "spinnerTipsEnabled": false,
   "showTurnDuration": false,
   "spinnerVerbs": {

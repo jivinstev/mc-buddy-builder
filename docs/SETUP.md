@@ -63,11 +63,12 @@ MINECRAFT_MODS_DIR=/path/to/your/instance/mods
 - **Switch in a running session:** `/output-style` → **Buddy Builder** (or **Default**), then
   `/clear`. A style only takes effect at session start or after `/clear`, and `/clear` wipes the
   current chat.
-- **Quiet view for the child.** In the terminal, the project starts Claude Code in focus view: the
-  child sees their last message, one line about what Claude did, and the answer. No tips or timings
-  either. To see everything for one session, start it with `claude --verbose`, or press `Ctrl+O`.
-  These are project settings in `.claude/settings.json` (`viewMode`, `tui`, `spinnerTipsEnabled`,
-  `showTurnDuration`, `spinnerVerbs`). The desktop app has its own **Transcript view** menu instead.
+- **Quieter screen for the child.** The project turns off Claude Code's tips and turn timings, and
+  the "working" words are kid ones (Building, Crafting, Mining...). Tool steps stay folded into one
+  line each; press `Ctrl+O` to see everything. These are project settings in `.claude/settings.json`
+  (`spinnerTipsEnabled`, `showTurnDuration`, `spinnerVerbs`). It deliberately does **not** use focus
+  view (`/focus`): that hides Claude's messages until the very end, and the child's updates along the
+  way are the point.
 - **Recommended:** keep two sessions open, one in Buddy Builder for the child and one in Default for
   grown-up work. They don't interfere with each other.
 
