@@ -39,6 +39,61 @@ def env_of(repo):
     return dict(l.split('=', 1) for l in p.read_text().splitlines() if '=' in l and not l.startswith('#')) if p.exists() else {}
 
 
+def update_cases(t):
+    """Step 0: a family copy whose upstream has moved on."""
+    fails = []
+    G = lambda repo, *a: subprocess.run(['git', *a], cwd=repo, capture_output=True, text=True)
+
+    def family(name, change=None):
+        """upstream (bare) <- family copy on main, with origin (bare); upstream then gets a new commit."""
+        base = t / name; base.mkdir()
+        repo = base / 'copy'; repo_copy(repo)
+        G(repo, 'checkout', '-q', '-b', 'main'); G(repo, 'add', '-A'); G(repo, 'commit', '-qm', 'start')
+        for remote in ('upstream', 'origin'):
+            G(base, 'init', '-q', '--bare', remote + '.git')
+            G(repo, 'remote', 'remove', remote); G(repo, 'remote', 'add', remote, str(base / (remote + '.git')))
+            G(repo, 'push', '-q', remote, 'main')
+        work = base / 'bb'; G(base, 'clone', '-q', '-b', 'main', str(base / 'upstream.git'), 'bb')
+        (work / 'docs/NEW.md').write_text('new\n')
+        if change:
+            change(work)
+        G(work, 'add', '-A'); G(work, 'commit', '-qm', 'A Buddy Builder improvement'); G(work, 'push', '-q')
+        (repo / '.env.local').write_text('MC_TARGET=26.2\n')
+        return repo, base
+
+    home = t / 'empty-home'
+    # 1. Upstream has one new commit: --yes merges it, pushes, and setup restarts with the new version.
+    repo, base = family('up1')
+    r = setup(repo, home, '--yes')
+    if not (repo / 'docs/NEW.md').exists() or 'updated.' not in r.stdout:
+        fails.append('setup did not bring in the update:\n' + r.stdout[:1200] + r.stderr[-400:])
+    elif 'docs/NEW.md' not in G(base / 'origin.git', 'ls-tree', '-r', '--name-only', 'main').stdout:
+        fails.append('the update was not pushed to origin main')
+    elif r.stdout.count('0. Buddy Builder updates') != 2 or 'up to date' not in r.stdout:
+        fails.append('setup should restart after updating and then find nothing new:\n' + r.stdout[-800:])
+    # 2. --check only reports.
+    repo, _ = family('up2')
+    r = setup(repo, home, '--check')
+    if (repo / 'docs/NEW.md').exists() or 'would ask: bring them in?' not in r.stdout:
+        fails.append('--check must report the update and change nothing:\n' + r.stdout[-600:])
+    # 3. Unsaved changes: leave it for Claude.
+    repo, _ = family('up3')
+    (repo / 'README.md').write_text('mine\n')
+    r = setup(repo, home, '--yes')
+    if (repo / 'docs/NEW.md').exists() or '/update-buddy-builder' not in r.stdout:
+        fails.append('with unsaved changes setup must not update:\n' + r.stdout[-600:])
+    # 4. A conflict: undo it completely and point at /update-buddy-builder.
+    repo, _ = family('up4', change=lambda w: (w / 'README.md').write_text('theirs\n'))
+    (repo / 'README.md').write_text('ours\n'); G(repo, 'commit', '-qam', 'family edit')
+    head = G(repo, 'rev-parse', 'HEAD').stdout
+    r = setup(repo, home, '--yes')
+    if G(repo, 'rev-parse', 'HEAD').stdout != head or G(repo, 'status', '--porcelain', '--untracked-files=no').stdout \
+            or '/update-buddy-builder' not in r.stdout:
+        fails.append('a conflicting update must be undone completely:\n' + r.stdout[-600:])
+    print('  update cases: %s' % ('ok' if not fails else 'FAIL'))
+    return fails
+
+
 def main():
     fails = []
     with tempfile.TemporaryDirectory() as t:
@@ -121,6 +176,7 @@ def main():
         if r.returncode != 0 or env_of(repo).get('MC_TARGET') != '26.2' or 'Next:' not in r.stdout:
             fails.append('plain ./setup with no keyboard must finish like --yes (exit %d):\n%s'
                          % (r.returncode, r.stdout[-600:]))
+        fails += update_cases(t)
     if fails:
         print('test_setup: FAIL')
         for f in fails:

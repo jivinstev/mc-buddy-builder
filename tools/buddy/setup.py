@@ -8,6 +8,10 @@
     ./setup --target 1.21.1 --mods-dir ~/path/mods --name "Dragon Treasure" --repo private
 
 WHAT IT DOES
+    0. Brings in Buddy Builder updates, if there are any (asking first). It merges `upstream/main`
+       into your main, checks the mod still builds, pushes, and starts setup again with the new
+       version. Anything it can't do safely (a conflict, unsaved changes, a failed build) it undoes,
+       and tells you to ask Claude to run /update-buddy-builder instead.
     1. Checks the tools, and installs what's missing (asking first): Java 21 (on a Mac, no password
        needed), Claude Code, and the GitHub CLI (with Homebrew). git and Python come with the Mac's
        developer tools.
@@ -227,6 +231,11 @@ def main():
     cloud = os.environ.get('CLAUDE_CODE_REMOTE') == 'true'
     notes, changes = [], {}
 
+    if update_step(ask, a, cloud):
+        # Setup itself may have changed: run the new one, which finds nothing more to update.
+        sys.stdout.flush()      # execv drops anything still buffered
+        os.execv(sys.executable, [sys.executable, str(pathlib.Path(__file__).resolve())] + sys.argv[1:])
+
     print('1. Tools')
     import install_game
     tools_step(ask, a, cloud, notes, install_game)
@@ -333,6 +342,56 @@ def main():
         print('Minecraft launcher and pick the "Buddy Builder" profile.')
     print('Build and test by hand: ./gradlew build, ./tools/gate-b.sh, ./tools/client-test.sh')
     return 0
+
+
+def update_step(ask, a, cloud):
+    """Merge new Buddy Builder commits into this copy. True if it did (setup then restarts)."""
+    r = remotes()
+    if cloud or 'upstream' not in r or is_upstream(r.get('origin')):
+        return False        # the cloud manages git; no upstream; or this IS Buddy Builder
+    print('0. Buddy Builder updates')
+    if run(['git', 'fetch', '-q', 'upstream'])[0] != 0:
+        print('   could not reach GitHub, so not checking for updates this time')
+        return False
+    code, out = run(['git', 'rev-list', '--count', 'HEAD..upstream/main'])
+    count = int(out) if code == 0 and out.isdigit() else 0
+    if not count:
+        print('   up to date')
+        return False
+    print('   %d new: ' % count + run(['git', 'log', '--format=%s', '-1', 'upstream/main'])[1])
+    later = 'ask Claude to run /update-buddy-builder'
+    branch = run(['git', 'branch', '--show-current'])[1]
+    if branch != 'main':
+        print('   not on main (on %s), so leaving it for later: %s' % (branch or 'no branch', later))
+        return False
+    if run(['git', 'status', '--porcelain', '--untracked-files=no'])[1]:
+        print('   this folder has unsaved changes, so leaving it for later: ' + later)
+        return False
+    if a.check:
+        print('   would ask: bring them in?')
+        return False
+    if ask('Bring in the %d Buddy Builder update(s) now? (yes/no)' % count, 'yes', ['yes', 'no']) != 'yes':
+        return False
+    before = run(['git', 'rev-parse', 'HEAD'])[1]
+
+    def undo(why):
+        run(['git', 'merge', '--abort'])
+        run(['git', 'reset', '-q', '--keep', before])
+        print('   %s, so nothing changed. To update anyway: %s' % (why, later))
+        return False
+    if run(['git', 'merge', '-q', '--no-edit', 'upstream/main'])[0] != 0:
+        return undo('your copy and the update both changed the same files')
+    if OFFLINE:
+        print('   skipped the build check (BUDDY_SETUP_OFFLINE)')
+    else:
+        print('   checking the mod still builds (the first time takes a few minutes)...')
+        if subprocess.run(['./gradlew', 'build', '-q', '--console=plain'], cwd=ROOT,
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
+            return undo('the mod did not build with the update')
+    if 'origin' in r and run(['git', 'push', '-q', 'origin', 'HEAD:main'])[0] != 0:
+        print('   updated here, but could not push to GitHub; run `git push origin main` later')
+    print('   updated. Start a NEW Claude session so it picks up the new Buddy Builder mode.')
+    return True
 
 
 def offer(ask, a, question, notes, manual):

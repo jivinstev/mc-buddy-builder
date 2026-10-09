@@ -31,6 +31,8 @@ claude                   # then let your child say hi
 - names the mod (or your child can do it later);
 - makes your own private copy on GitHub, still linked here so Buddy Builder updates keep arriving.
 
+To get Buddy Builder updates later, run `./setup` again.
+
 Then open the Minecraft launcher, pick the **Buddy Builder** profile, and play. Each time your child
 finishes something, Claude puts the new version of the mod in that profile's mods folder.
 
