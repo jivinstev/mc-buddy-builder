@@ -42,7 +42,9 @@ def env_of(repo):
 def update_cases(t):
     """Step 0: a family copy whose upstream has moved on."""
     fails = []
-    G = lambda repo, *a: subprocess.run(['git', *a], cwd=repo, capture_output=True, text=True)
+    # CI runners have no git identity, and a failed commit would quietly break every case below.
+    ident = dict(os.environ, GIT_AUTHOR_NAME='t', GIT_AUTHOR_EMAIL='t@t', GIT_COMMITTER_NAME='t', GIT_COMMITTER_EMAIL='t@t')
+    G = lambda repo, *a: subprocess.run(['git', *a], cwd=repo, capture_output=True, text=True, env=ident)
 
     def family(name, change=None):
         """upstream (bare) <- family copy on main, with origin (bare); upstream then gets a new commit."""
