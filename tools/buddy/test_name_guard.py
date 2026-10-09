@@ -9,8 +9,11 @@ import json, os, pathlib, subprocess, sys, tempfile
 HOOK = pathlib.Path(__file__).resolve().parents[2] / '.claude/hooks/name_guard.py'
 
 
-def run(root, path, mod_id='buddymod', env_local=None, extra_env=None, tool='Edit'):
+def run(root, path, mod_id='buddymod', env_local=None, extra_env=None, tool='Edit', wt_mod_id=None):
     (root / 'gradle.properties').write_text('mod_id=%s\nmod_name=X\n' % mod_id)
+    wt = root / '.worktrees/dragon'
+    if wt.is_dir():
+        (wt / 'gradle.properties').write_text('mod_id=%s\nmod_name=X\n' % (wt_mod_id or mod_id))
     envf = root / '.env.local'
     envf.unlink(missing_ok=True)
     if env_local is not None:
@@ -30,6 +33,8 @@ def main():
     with tempfile.TemporaryDirectory() as d:
         root = pathlib.Path(d)
         java = str(root / 'src/main/java/com/buddymod/Dragon.java')
+        wt = root / '.worktrees/dragon'
+        wt.mkdir(parents=True)
         cases = [
             ('unnamed: a mod file is refused', dict(path=java), 2),
             ('unnamed: a relative path is refused too', dict(path='art/dragon.txt'), 2),
@@ -41,6 +46,11 @@ def main():
             ('kept the starter name on purpose', dict(path=java, env_local='MC_TARGET=26.2\nKEEP_STARTER_NAME=yes\n'), 0),
             ('a different .env.local does not unlock it', dict(path=java, env_local='MC_TARGET=26.2\n'), 2),
             ('maintainer', dict(path=java, extra_env={'BUDDY_MAINTAINER': '1'}), 0),
+            ('unnamed: a file in a worktree is refused', dict(path=str(wt / 'src/main/java/X.java')), 2),
+            ('named worktree of an unnamed main is fine', dict(path=str(wt / 'src/x.java'), wt_mod_id='dragontreasure'), 0),
+            ('unnamed worktree of a named main is refused', dict(path=str(wt / 'src/x.java'), mod_id='dragontreasure', wt_mod_id='buddymod'), 2),
+            ('main .env.local unlocks a worktree too', dict(path=str(wt / 'src/x.java'), env_local='KEEP_STARTER_NAME=yes\n'), 0),
+            ('a worktree doc is fine', dict(path=str(wt / 'docs/x.md')), 0),
         ]
         for name, kw, want in cases:
             code, err = run(root, **kw)

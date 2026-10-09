@@ -14,12 +14,16 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 
 
 def repo_copy(dst):
-    shutil.copytree(ROOT, dst, ignore=lambda d, n: [x for x in n if x in ('build', 'run', '.gradle', '__pycache__', '.env.local', '.env.local.bak')])
-    subprocess.run(['git', 'remote', 'set-url', 'origin', 'https://github.com/jivinstev/mc-buddy-builder.git'], cwd=dst, check=True)
+    # A fresh repo, never a copy of .git: in a worktree .git is a pointer to the real repository,
+    # and setup renaming the copy's remotes would rename the real ones.
+    shutil.copytree(ROOT, dst, ignore=lambda d, n: [x for x in n if x in (
+        '.git', '.worktrees', 'build', 'run', '.gradle', '__pycache__', '.env.local', '.env.local.bak')])
+    subprocess.run(['git', 'init', '-q'], cwd=dst, check=True)
+    subprocess.run(['git', 'remote', 'add', 'origin', 'https://github.com/jivinstev/mc-buddy-builder.git'], cwd=dst, check=True)
 
 
 def setup(repo, home, *args, cloud=False):
-    env = dict(os.environ, HOME=str(home), XDG_DATA_HOME=str(home / '.local/share'))
+    env = dict(os.environ, HOME=str(home), XDG_DATA_HOME=str(home / '.local/share'), BUDDY_SETUP_OFFLINE='1')
     env.pop('MINECRAFT_DIR', None)
     env.pop('CLAUDE_CODE_REMOTE', None)
     if cloud:
@@ -51,9 +55,11 @@ def main():
         if 'upstream' not in remotes or 'origin' in remotes:
             fails.append('"local" should leave only an upstream remote, got %s' % remotes)
 
-        # 2. A Prism instance running NeoForge for 1.21.1, with mods: that is the recommendation.
+        # 2. A Prism instance running NeoForge for 1.21.1: that version is the recommendation. The
+        #    mods folder is still the Buddy Builder launcher profile's, which a test run never installs.
         home = t / 'prism-home'
-        inst = home / '.local/share/PrismLauncher/instances/My Pack'
+        prism = 'Library/Application Support/PrismLauncher' if sys.platform == 'darwin' else '.local/share/PrismLauncher'
+        inst = home / prism / 'instances/My Pack'
         (inst / '.minecraft/mods').mkdir(parents=True)
         (inst / '.minecraft/mods/some-mod.jar').write_bytes(b'')
         (inst / 'mmc-pack.json').write_text(json.dumps({'components': [
@@ -62,11 +68,12 @@ def main():
         repo = t / 'b'; repo_copy(repo)
         r = setup(repo, home, '--yes', '--repo', 'local')
         e = env_of(repo)
-        want_dir = str(inst / '.minecraft/mods')
         if r.returncode != 0:
             fails.append('setup failed with a Prism install: ' + r.stdout[-800:] + r.stderr[-800:])
-        elif e.get('MC_TARGET') != '1.21.1' or e.get('MINECRAFT_MODS_DIR_1_21_1') != want_dir:
-            fails.append('it should recommend the NeoForge 1.21.1 install and its mods folder, got %s' % e)
+        elif e.get('MC_TARGET') != '1.21.1' or 'MINECRAFT_MODS_DIR_1_21_1' in e:
+            fails.append('it should recommend 1.21.1 and install nothing offline, got %s' % e)
+        elif 'skipped (BUDDY_SETUP_OFFLINE)' not in r.stdout:
+            fails.append('offline, setup must say what it skipped:\n' + r.stdout[-800:])
 
         # 3. A re-run with --yes changes nothing.
         before = (repo / '.env.local').read_text()
@@ -80,6 +87,11 @@ def main():
         if 'MC_TARGET=26.2' not in (repo / '.env.local').read_text():
             fails.append('a re-run overwrote a hand-edited MC_TARGET')
 
+        # 4b. --mods-dir is used as given, and nothing is installed for it.
+        mods = t / 'my-instance/mods'; mods.mkdir(parents=True)
+        r = setup(repo, home, '--yes', '--mods-dir', str(mods))
+        if env_of(repo).get('MINECRAFT_MODS_DIR_26_2') != str(mods):
+            fails.append('--mods-dir was not written:\n' + r.stdout[-600:])
         # 5. --name renames the mod; --check changes nothing.
         repo = t / 'c'; repo_copy(repo)
         r = setup(repo, t / 'empty-home', '--check', '--repo', 'local')

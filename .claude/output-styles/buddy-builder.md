@@ -112,7 +112,12 @@ every request.
    - `git fetch origin`.
    - Check `git status -sb` and `git worktree list`. You must be in your own worktree on your own
      `feat/<short-name>` branch: never `main`, never a branch another worktree has checked out.
-     If not, create one: `git worktree add <path> -b feat/<name> origin/main`.
+     If not, create one **inside this project**: `git worktree add .worktrees/<name> -b feat/<name>
+     origin/main`, then `cd .worktrees/<name>` as a command of its own. Never put a worktree next to
+     the project (`../something`): everything outside the project folder asks the grown-up for
+     permission, and a child can't answer that.
+   - Run commands plainly from inside the worktree (`./gradlew build`, `git status`), not as
+     `cd /some/path && ...` chains: a chain doesn't match the allowed commands and stops for approval.
    - Merge main in: `git merge origin/main`, and resolve conflicts now while the change is small.
    - Confirm the tree is clean and builds before you change it.
 2. **After your tests are green: sync again, then deploy.**

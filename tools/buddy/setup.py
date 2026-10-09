@@ -8,10 +8,14 @@
     ./setup --target 1.21.1 --mods-dir ~/path/mods --name "Dragon Treasure" --repo private
 
 WHAT IT DOES
-    1. Checks the tools: git, Java 21, Python, Claude Code, and the GitHub CLI (optional).
-    2. Finds the Minecraft installs on this machine and recommends one. If an install already
-       runs NeoForge on a version this mod supports, that version and its mods folder are the
-       recommendation. Otherwise the recommendation is the newest supported version.
+    1. Checks the tools, and installs what's missing (asking first): Java 21 (on a Mac, no password
+       needed), Claude Code, and the GitHub CLI (with Homebrew). git and Python come with the Mac's
+       developer tools.
+    2. Picks the Minecraft version (the newest this mod supports, unless an install here already
+       runs NeoForge on a supported one), then gets Minecraft ready to play it: NeoForge, and a
+       "Buddy Builder (<version>)" profile in the Minecraft launcher with its own game folder, so
+       the family's normal worlds are untouched (tools/buddy/install_game.py). That profile's mods
+       folder is where the mod is installed. --mods-dir uses a mods folder of your own instead.
     3. Names the mod (optional; you can do it later, or let your child pick with /name-my-mod).
     4. Decides where your copy lives:
          private  a new PRIVATE repo on your GitHub account, holding this project (recommended).
@@ -47,6 +51,11 @@ HINTS = {
     'gh': {'Darwin': 'brew install gh', 'Windows': 'winget install --id GitHub.cli',
            'Linux': 'https://cli.github.com'},
 }
+
+
+CLAUDE_INSTALL = 'curl -fsSL https://claude.ai/install.sh | bash'
+# Tests and CI set this: nothing is downloaded or installed, and setup says what it skipped.
+OFFLINE = os.environ.get('BUDDY_SETUP_OFFLINE') == '1'
 
 
 def hint(tool):
@@ -215,21 +224,8 @@ def main():
     notes, changes = [], {}
 
     print('1. Tools')
-    for tool in ('git', 'java', 'python3', 'claude', 'gh'):
-        ok = shutil.which(tool) is not None
-        extra = ''
-        if tool == 'java' and ok:
-            _, out = run(['java', '-version'])
-            m = re.search(r'version "(\d+)', out)
-            major = int(m.group(1)) if m else 0
-            extra = ' (Java %s)' % (major or '?')
-            if major and major < 21:
-                ok = False
-                extra += ' - need 21 or newer'
-        print('   %-8s %s%s' % (tool, 'ok' if ok else 'MISSING', extra))
-        if not ok and tool in HINTS:
-            (notes if tool == 'gh' else notes).append('install %s: %s' % (tool, hint(tool)))
-    print('   (Minecraft 26.2 also needs Java 25; the build downloads it by itself.)')
+    import install_game
+    tools_step(ask, a, cloud, notes, install_game)
 
     print('2. Minecraft')
     targets = supported_targets()
@@ -240,7 +236,7 @@ def main():
                                           ', '.join(inst.get('loaders') or inst.get('versions') or ['?']), mods))
     if not installs:
         print('   no Minecraft install found here. That is fine for building and testing.')
-    rec_t, rec_dir, why = recommend(installs, targets)
+    rec_t, _, why = recommend(installs, targets)
     if env.get('MC_TARGET') in targets:
         rec_t, why = env['MC_TARGET'], 'your earlier choice'
     print('   supported versions: %s. Recommended: %s (%s)' % (', '.join(targets), rec_t, why))
@@ -250,16 +246,15 @@ def main():
     if env.get('MC_TARGET') != target:
         changes['MC_TARGET'] = target
     key = mods_key(target)
-    if env.get(key):
-        rec_dir = env[key]
-    if rec_dir and neoforge_target_of_dir(installs, rec_dir) not in (None, target):
-        rec_dir = ''
-    mods_dir = a.mods_dir if a.mods_dir is not None else ask(
-        'Mods folder of the Minecraft %s install you play (type none to skip)' % target, rec_dir)
+    mods_dir = a.mods_dir if a.mods_dir is not None else env.get(key, '')
+    if mods_dir:
+        print('   mods folder: %s (%s)' % (mods_dir, 'from --mods-dir' if a.mods_dir else 'your earlier choice'))
+        if not pathlib.Path(mods_dir).expanduser().is_dir():
+            notes.append('%s does not exist yet. Run Minecraft %s with NeoForge once to create it.' % (mods_dir, target))
+    elif not cloud:
+        mods_dir = game_step(ask, a, target, notes, install_game)
     if mods_dir and env.get(key) != mods_dir:
         changes[key] = mods_dir
-    if mods_dir and not pathlib.Path(mods_dir).expanduser().is_dir():
-        notes.append('%s does not exist yet. Run Minecraft %s with NeoForge once to create it.' % (mods_dir, target))
 
     print('3. Your mod\'s name')
     props = dict(re.findall(r'(?m)^(mod_id|mod_name)=(.*)$', (ROOT / 'gradle.properties').read_text()))
@@ -326,21 +321,105 @@ def main():
     if cloud:
         print('Next: you are already in Claude Code. Let your child say what they want to make.')
     else:
-        print('Next: open this folder in Claude Code (`claude`) and let your child say hi.')
+        print('Next: type `claude` here and let your child say hi. To play what they make, open the')
+        print('Minecraft launcher and pick the "Buddy Builder" profile.')
     print('Build and test by hand: ./gradlew build, ./tools/gate-b.sh, ./tools/client-test.sh')
     return 0
 
 
-def neoforge_target_of_dir(installs, mods_dir):
-    """The NeoForge version of the install a mods folder belongs to, if setup found it."""
-    want = os.path.realpath(os.path.expanduser(str(pathlib.Path(mods_dir).parent)))
-    for inst in installs:
-        if os.path.realpath(inst['path']) == want:
-            for loader in inst.get('loaders', []):
-                t = neoforge_target(loader)
-                if t:
-                    return t
-    return None
+def offer(ask, a, question, notes, manual):
+    """Ask before installing something. False (with a note saying how to do it by hand) if the answer
+    is no, or if this is --check or a test run."""
+    if a.check:
+        print('   would ask: ' + question)
+        return False
+    if OFFLINE:
+        notes.append('skipped (BUDDY_SETUP_OFFLINE): ' + manual)
+        return False
+    if ask(question + ' (yes/no)', 'yes', ['yes', 'no']) == 'yes':
+        return True
+    notes.append('to do it yourself later: ' + manual)
+    return False
+
+
+def tools_step(ask, a, cloud, notes, install_game):
+    print('   %-8s ok' % 'python3')
+    if shutil.which('git'):
+        print('   %-8s ok' % 'git')
+    else:
+        print('   %-8s MISSING' % 'git')
+        notes.append('install git: %s, then run ./setup again' % hint('git'))
+    java = install_game.find_java()
+    if java:
+        print('   %-8s ok (Java %d)' % ('java', install_game.java_major(java)))
+    elif cloud:
+        print('   %-8s the cloud tools step installs it' % 'java')
+    else:
+        print('   %-8s MISSING: the build and the NeoForge installer need Java 21' % 'java')
+        if SYS == 'Darwin' and offer(ask, a, 'Install Java 21 (Eclipse Temurin, about 200 MB)?', notes, hint('java')):
+            try:
+                install_game.install_java(lambda m: print('   ' + m))
+                print('   java     installed')
+            except Exception as e:
+                notes.append('Java 21 did not install (%s). Install it by hand: %s' % (e, hint('java')))
+        elif SYS != 'Darwin':
+            notes.append('install Java 21: ' + hint('java'))
+    if shutil.which('claude') or cloud:
+        print('   %-8s ok' % 'claude')
+    elif (pathlib.Path.home() / '.local/bin/claude').exists():
+        print('   %-8s installed in ~/.local/bin, but not on your PATH yet' % 'claude')
+        notes.append('open a NEW terminal window so the `claude` command works (or run ~/.local/bin/claude)')
+    else:
+        print('   %-8s MISSING' % 'claude')
+        if SYS != 'Windows' and offer(ask, a, 'Install Claude Code?', notes, CLAUDE_INSTALL):
+            code = subprocess.run(['bash', '-c', CLAUDE_INSTALL]).returncode
+            if code != 0 or not (shutil.which('claude') or (pathlib.Path.home() / '.local/bin/claude').exists()):
+                notes.append('Claude Code did not install; see https://docs.claude.com/en/docs/claude-code/setup')
+            elif not shutil.which('claude'):
+                notes.append('Claude Code is installed. Open a NEW terminal window so the `claude` command works.')
+    if cloud:
+        return
+    if not shutil.which('gh'):
+        print('   %-8s MISSING (for your private copy on GitHub)' % 'gh')
+        if shutil.which('brew') and offer(ask, a, 'Install the GitHub CLI with Homebrew?', notes, 'brew install gh'):
+            subprocess.run(['brew', 'install', 'gh'])
+    if shutil.which('gh'):
+        if run(['gh', 'auth', 'status'])[0] == 0:
+            print('   %-8s ok (signed in)' % 'gh')
+        else:
+            print('   %-8s not signed in to GitHub' % 'gh')
+            if ask.interactive and offer(ask, a, 'Sign in to GitHub now (opens your browser)?', notes, 'gh auth login'):
+                subprocess.run(['gh', 'auth', 'login', '--web', '--git-protocol', 'https'])
+
+
+def game_step(ask, a, target, notes, install_game):
+    """Get Minecraft ready to play this version. Returns the mods folder, or '' if it isn't ready."""
+    if SYS == 'Windows':
+        notes.append('Windows is not supported yet: set up NeoForge %s by hand and use --mods-dir' % target)
+        return ''
+    missing = install_game.status(target)
+    mods = str(install_game.game_dir(target) / 'mods')
+    if not missing:
+        print('   ready to play: the "%s" profile in the Minecraft launcher' % install_game.profile_name(target))
+        return mods
+    print('   to play the mod, this needs: ' + ', '.join(missing))
+    question = ('Set up Minecraft %s for playing: NeoForge, plus a "%s" profile in the launcher '
+                'with its own worlds?' % (target, install_game.profile_name(target)))
+    if not offer(ask, a, question, notes, 'run ./setup again'):
+        return ''
+
+    def wait_for_launcher():
+        if not ask.interactive:
+            return False
+        input('   The Minecraft launcher is open. Quit it (Cmd+Q), then press Enter: ')
+        return True
+    try:
+        install_game.ensure(target, say=lambda m: print('   ' + m), wait_for_launcher=wait_for_launcher)
+    except Exception as e:
+        notes.append(str(e))
+        return ''
+    print('   ready to play: open the Minecraft launcher and pick "%s"' % install_game.profile_name(target))
+    return mods
 
 
 if __name__ == '__main__':

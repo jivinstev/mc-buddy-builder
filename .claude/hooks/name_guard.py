@@ -22,8 +22,17 @@ REASON = ('The mod still has the starter name ("Buddy Mod"), so its files stay u
 def blocked(root, path, env):
     if env.get('BUDDY_MAINTAINER') == '1' or not path:
         return False
+    rel = os.path.relpath(os.path.abspath(os.path.join(root, path)), root)
+    parts = rel.split(os.sep)
+    # A worktree in .worktrees/<name> is its own checkout: judge it by its own gradle.properties.
+    # .env.local is only ever in the main project folder.
+    checkout = root
+    if len(parts) > 2 and parts[0] == '.worktrees':
+        checkout, parts = os.path.join(root, parts[0], parts[1]), parts[2:]
+    if parts[0] not in GUARDED:
+        return False
     try:
-        props = open(os.path.join(root, 'gradle.properties'), encoding='utf-8').read()
+        props = open(os.path.join(checkout, 'gradle.properties'), encoding='utf-8').read()
     except OSError:
         return False
     if not re.search(r'(?m)^mod_id=buddymod\s*$', props):
@@ -33,8 +42,7 @@ def blocked(root, path, env):
             return False
     except OSError:
         pass
-    rel = os.path.relpath(os.path.abspath(os.path.join(root, path)), root)
-    return rel.split(os.sep)[0] in GUARDED
+    return True
 
 
 def main():
