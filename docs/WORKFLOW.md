@@ -8,8 +8,14 @@ feature, and three sync points, so that nobody's work is lost.
 
 ```bash
 git fetch origin
-git worktree add ../mymod-dragon -b feat/dragon origin/main
+git worktree add .worktrees/dragon -b feat/dragon origin/main
+cd .worktrees/dragon
 ```
+
+Worktrees live in `.worktrees/`, inside the project (git ignores that folder). Claude Code asks
+permission for anything outside the folder a session started in, so a worktree next to the project
+(`../mymod-dragon`) would stop the child's session with prompts it can't answer. The build finds
+`.env.local` in the main project folder, so a worktree doesn't need its own copy.
 
 Never work on `main` directly, and never on a branch another worktree has checked out. Keep the
 worktree after the feature lands, so the child can ask for changes to it later.

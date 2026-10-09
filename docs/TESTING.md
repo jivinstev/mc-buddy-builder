@@ -83,5 +83,5 @@ New block textures: draw them as text in `art/` and run `tools/buddy/make_textur
 header). `tools/buddy/test_make_texture.py` checks it.
 
 The pause guard is `client/test/ClientTestPauseGuard.java`. `./tools/client-test.sh` runs Gate C on
-macOS (a window opens) or headless Linux (Xvfb), writes the verdict and photo to its signal folder,
+macOS (a window opens) or headless Linux (Xvfb), writes the verdict and photo to `build/client-test/` (inside the project, so Claude can look at the photo without a permission prompt),
 and exits 0 PASS, 1 FAIL, 2 can't run here, 3 no verdict.

@@ -10,7 +10,8 @@ This is a grown-up task. Talk to the grown-up in plain sentences, not kid mode.
 1. Check the `upstream` remote exists: `git remote -v`. If it doesn't, add it:
    `git remote add upstream https://github.com/jivinstev/mc-buddy-builder.git`.
 2. Start from a clean tree on a new branch: `git fetch origin upstream`,
-   `git worktree add ../<project>-update -b chore/update-buddy-builder origin/main`.
+   `git worktree add .worktrees/update -b chore/update-buddy-builder origin/main`, then
+   `cd .worktrees/update`. Keep worktrees inside the project; anything outside it prompts for permission.
 3. `git merge upstream/main`. Expect conflicts only where the family changed a Buddy Builder file
    (the mode, the tools, the starter Bounce Block). Keep the family's own mod code and names;
    take upstream's tools and docs unless the grown-up says otherwise. If unsure, ask.

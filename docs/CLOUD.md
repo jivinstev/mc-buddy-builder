@@ -1,6 +1,46 @@
 # Building in a Claude Code cloud session
 
-The README has the steps. This page has the reasons and the fixes.
+**Not supported yet.** Buddy Builder is made for building on the same computer the child plays on,
+where every finished feature goes straight into their game. A cloud session can build and test, but
+can't play, and a template copy can't take Buddy Builder updates. These steps worked when they were
+written; use them only if you know you want this.
+
+## Steps (not supported yet)
+
+Nothing to install. One environment works for this repo and for
+[mc-mod-version-upgrade](https://github.com/jivinstev/mc-mod-version-upgrade).
+
+1. **Make your copy:** on GitHub, **Use this template → Create a new repository → Private**.
+2. **Make the environment (once):** at [claude.ai/code](https://claude.ai/code), open the environment
+   menu → **Add environment**. Name it `Minecraft modding`, then:
+   - **Network access:** Custom. Tick **Also include default list of common package managers**.
+     Paste into **Allowed domains**:
+     ```text
+     maven.neoforged.net
+     *.minecraft.net
+     *.mojang.com
+     api.modrinth.com
+     cdn.modrinth.com
+     api.curseforge.com
+     *.forgecdn.net
+     maven.parchmentmc.org
+     maven.fabricmc.net
+     maven.blamejared.com
+     maven.ithundxr.dev
+     dl.cloudsmith.io
+     thedarkcolour.github.io
+     packages.adoptium.net
+     ```
+   - **Setup script:** leave it empty.
+3. **Start a session** on your copy, in that environment. It opens straight away. Type
+   `run ./setup --yes`: it checks every host and installs anything missing (a virtual screen and
+   Java 25) the first time, which takes a minute or two. Look for `ready` under
+   **6. Cloud environment**.
+4. **Let your child say what they want to make.** Claude builds it and runs all three gates.
+
+In the cloud you build and test, and finished work lands on `main` once the gates pass. To play, on
+your own computer: clone your copy and run `./setup` once (it finds your Minecraft). After that,
+each time: `git pull`, then `./gradlew deployToMods`.
 
 ## What each piece is for
 

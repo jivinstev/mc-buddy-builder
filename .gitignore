@@ -1,6 +1,7 @@
 .private-terms
 .env.local
 .claude/settings.local.json
+.worktrees/
 __pycache__/
 
 # Build and game output. `git add -A` is part of the workflow, so none of it may show up.

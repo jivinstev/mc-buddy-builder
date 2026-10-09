@@ -11,7 +11,9 @@
 set -uo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"; cd "$REPO"
 MODID="$(sed -n 's/^mod_id=//p' gradle.properties)"
-SIG="${SIG:-${TMPDIR:-/tmp}/${MODID}-client}"; TIMEOUT="${TIMEOUT:-900}"
+# Inside the project (build/ is git-ignored): Claude looks at the photo, and anything outside the
+# project folder would stop the child's session for permission.
+SIG="${SIG:-$REPO/build/client-test}"; TIMEOUT="${TIMEOUT:-900}"
 rm -rf "$SIG"; mkdir -p "$SIG"; touch "$SIG/.started"
 MCARG=(); [ -n "${MC:-}" ] && MCARG=("-Pmc=$MC")
 bash cloud/ensure.sh || exit 2   # cloud only: xvfb + Java 25 on first use; no-op elsewhere

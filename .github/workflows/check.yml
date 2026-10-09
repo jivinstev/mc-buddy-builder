@@ -27,5 +27,7 @@ jobs:
         run: python3 tools/buddy/test_setup.py
       - name: Texture tool
         run: python3 tools/buddy/test_make_texture.py
-      - name: README cloud steps match cloud/
+      - name: Setting up Minecraft to play (no network)
+        run: python3 tools/buddy/test_install_game.py
+      - name: Cloud doc steps match cloud/
         run: python3 cloud/check_readme.py

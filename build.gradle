@@ -16,6 +16,8 @@ plugins {
 // ─────────────────────────────────────────────────────────────────────────────
 def readEnvLocal(String key) {
     def envFile = file('.env.local')
+    // A worktree in .worktrees/<name> uses the main project's .env.local (it is never committed).
+    if (!envFile.exists() && projectDir.parentFile?.name == '.worktrees') envFile = file('../../.env.local')
     if (!envFile.exists()) return null
     def value = null
     envFile.eachLine { line ->

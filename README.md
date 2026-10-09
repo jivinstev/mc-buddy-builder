@@ -13,53 +13,35 @@ You get a working NeoForge mod for Minecraft 1.21.1 or 26.2, with one example (a
 three test gates already passing: unit tests, a headless game server, and a real game client. Claude
 won't call a feature done until all three pass.
 
-## Quick start: on your computer
+## Quick start
+
+On a Mac with Minecraft: Java Edition (open the launcher once and sign in first):
 
 ```bash
 git clone https://github.com/jivinstev/mc-buddy-builder.git my-mod
-cd my-mod && ./setup     # finds your Minecraft, names the mod, makes your private copy
+cd my-mod && ./setup
 claude                   # then let your child say hi
 ```
 
-Needs git, Python 3, Java 21 and [Claude Code](https://docs.claude.com/en/docs/claude-code/setup).
+`./setup` does the rest, and every question has a recommended answer you can accept with Enter:
 
-## Quick start: in the cloud
+- installs Java 21 and Claude Code for you if they're missing;
+- installs NeoForge into your Minecraft launcher, as a **Buddy Builder** profile with its own mods
+  folder, so your normal worlds stay untouched;
+- names the mod (or your child can do it later);
+- makes your own private copy on GitHub, still linked here so Buddy Builder updates keep arriving.
 
-Nothing to install. One environment works for this repo and for
-[mc-mod-version-upgrade](https://github.com/jivinstev/mc-mod-version-upgrade).
+Then open the Minecraft launcher, pick the **Buddy Builder** profile, and play. Each time your child
+finishes something, Claude puts the new version of the mod in that profile's mods folder.
 
-1. **Make your copy:** on GitHub, **Use this template → Create a new repository → Private**.
-2. **Make the environment (once):** at [claude.ai/code](https://claude.ai/code), open the environment
-   menu → **Add environment**. Name it `Minecraft modding`, then:
-   - **Network access:** Custom. Tick **Also include default list of common package managers**.
-     Paste into **Allowed domains**:
-     ```text
-     maven.neoforged.net
-     *.minecraft.net
-     *.mojang.com
-     api.modrinth.com
-     cdn.modrinth.com
-     api.curseforge.com
-     *.forgecdn.net
-     maven.parchmentmc.org
-     maven.fabricmc.net
-     maven.blamejared.com
-     maven.ithundxr.dev
-     dl.cloudsmith.io
-     thedarkcolour.github.io
-     packages.adoptium.net
-     ```
-   - **Setup script:** leave it empty.
-3. **Start a session** on your copy, in that environment. It opens straight away. Type
-   `run ./setup --yes`: it checks every host and installs anything missing (a virtual screen and
-   Java 25) the first time, which takes a minute or two. Look for `ready` under
-   **6. Cloud environment**.
-4. **Let your child say what they want to make.** Claude builds it and runs all three gates.
+**Clone this repo; don't use "Use this template".** A template copy shares no history with Buddy
+Builder, so it can't take updates. `./setup` makes your private copy for you.
 
-In the cloud you build and test, and finished work lands on `main` once the gates pass. To play, on
-your own computer: clone your copy and run `./setup` once (it finds your Minecraft). After that,
-each time: `git pull`, then `./gradlew deployToMods`.
-More: [docs/CLOUD.md](docs/CLOUD.md).
+**Only on a Mac for now.** Windows support is planned
+([#1](https://github.com/jivinstev/mc-buddy-builder/issues/1)). Cloud sessions (claude.ai/code) can
+build and test but can't play, so they aren't supported yet either
+([#2](https://github.com/jivinstev/mc-buddy-builder/issues/2)); [docs/CLOUD.md](docs/CLOUD.md) has the
+unsupported steps for anyone who wants to try.
 
 ## More
 

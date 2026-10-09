@@ -19,7 +19,7 @@ Matching follows what was measured against Claude Code, not what one might guess
     `Bash(python3 tools/:*)` did NOT allow `python3 tools/buddy/test_setup.py`.
   - a leading `MC=26.2 ` is NOT stripped, so those forms need rules of their own.
 """
-import json, pathlib, shutil, subprocess, sys
+import json, pathlib, re, shutil, subprocess, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SETTINGS = ROOT / '.claude/settings.json'
@@ -37,7 +37,7 @@ WORKFLOW = [
     'python3 cloud/check.py', 'bash cloud/ensure.sh java25',
     'git status', 'git diff', 'git log --oneline -5', 'git add -A', 'git commit -m "Add a dragon"',
     'git push -u origin dragon', 'git pull', 'git switch -c dragon', 'git branch', 'git merge main',
-    'git worktree list', 'git worktree add ../my-mod-dragon -b feat/dragon origin/main',
+    'git worktree list', 'git worktree add .worktrees/dragon -b feat/dragon origin/main',
     'unzip -l mods/buddymod-1.0.jar',
 ]
 # Things that must still stop: a grown-up decides.
@@ -80,6 +80,19 @@ def static():
         fails.append('unexpected ask rules (each one is a prompt): %s' % sorted(set(ask) - {'WebFetch', 'WebSearch'}))
     if 'Edit(/**)' not in allow:
         fails.append('edits inside the project must be allowed: Edit(/**)')
+    # A worktree outside the project (../x) makes every read, edit and build in it ask permission.
+    for doc in [ROOT / 'README.md', *ROOT.glob('docs/*.md'), *ROOT.glob('.claude/**/*.md')]:
+        for n, line in enumerate(doc.read_text(encoding='utf-8').splitlines(), 1):
+            if re.search(r'worktree add\s+\.\.', line):
+                fails.append('%s:%d puts a worktree outside the project (use .worktrees/<name>)' % (doc.relative_to(ROOT), n))
+    # Test output Claude reads (logs, the Gate C photo) must land inside the project, or reading it
+    # stops the session for permission. Scripts write under build/ instead of the temp folder.
+    for script in sorted(ROOT.glob('tools/*.sh')):
+        for n, line in enumerate(script.read_text(encoding='utf-8').splitlines(), 1):
+            if re.search(r'\bmktemp\b|\$\{?TMPDIR|(^|[\s"=])/tmp/', line) and not line.lstrip().startswith('#'):
+                fails.append('%s:%d writes outside the project (use build/): %s' % (script.relative_to(ROOT), n, line.strip()))
+    if '.worktrees/' not in (ROOT / '.gitignore').read_text().split():
+        fails.append('.worktrees/ must be in .gitignore, or `git add -A` picks up worktrees')
     return fails
 
 
@@ -104,7 +117,6 @@ def live():
     if not shutil.which('claude'):
         return ['--live needs the claude command on PATH']
     fails = []
-    probe_file = 'build/permission-probe.txt'
     cases = [('./setup --check', True), ('python3 tools/buddy/test_rename_mod.py', True),
              ('git status --short', True), ('python3 -c "print(1)"', False)]
     for cmd, should_pass in cases:
@@ -116,11 +128,13 @@ def live():
         elif not should_pass and not denied:
             fails.append('control was NOT refused (the probe cannot see prompts): ' + cmd)
         print('  %-45s %s' % (cmd, 'refused' if denied else 'ran'))
-    used, denied = live_probe('Use the Write tool exactly once to create %s containing the word ok, then stop.' % probe_file)
-    (ROOT / probe_file).unlink(missing_ok=True)
-    if not used or denied:
-        fails.append('editing a file inside the project needed approval (or was not tried)')
-    print('  %-45s %s' % ('Write ' + probe_file, 'refused' if denied else 'ran'))
+    for probe_file in ['build/permission-probe.txt', '.worktrees/permission-probe/docs/probe.txt']:
+        used, denied = live_probe('Use the Write tool exactly once to create %s containing the word ok, then stop.' % probe_file)
+        (ROOT / probe_file).unlink(missing_ok=True)
+        if not used or denied:
+            fails.append('editing %s needed approval (or was not tried)' % probe_file)
+        print('  %-45s %s' % ('Write ' + probe_file, 'refused' if denied else 'ran'))
+    shutil.rmtree(ROOT / '.worktrees/permission-probe', ignore_errors=True)
     return fails
 
 
