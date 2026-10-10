@@ -36,7 +36,10 @@ your earlier answers and anything you edited by hand. `./setup --check` shows wh
 
 Your family builds and tests one Minecraft version. Buddy Builder's own CI builds both.
 
-To bring in later improvements to Buddy Builder, ask Claude to run `/update-buddy-builder`.
+**Getting Buddy Builder updates:** run `./setup` again. If there are updates it asks, brings them
+in, checks the mod still builds, and pushes. Then start a new Claude session so it uses them. If it
+can't do that safely (for example your copy and the update changed the same file), it changes nothing
+and tells you to ask Claude to run `/update-buddy-builder`, which sorts out the overlap.
 
 ## Add the mode to an existing mod project
 

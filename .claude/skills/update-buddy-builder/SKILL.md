@@ -7,6 +7,9 @@ description: Bring in the latest Buddy Builder improvements (the mode, the guard
 
 This is a grown-up task. Talk to the grown-up in plain sentences, not kid mode.
 
+`./setup` brings in updates by itself when they merge cleanly and the mod still builds. This skill is
+for when it couldn't: a conflict, unsaved changes, or a build that broke.
+
 1. Check the `upstream` remote exists: `git remote -v`. If it doesn't, add it:
    `git remote add upstream https://github.com/jivinstev/mc-buddy-builder.git`.
 2. Start from a clean tree on a new branch: `git fetch origin upstream`,
