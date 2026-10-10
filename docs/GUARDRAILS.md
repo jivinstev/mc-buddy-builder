@@ -14,6 +14,7 @@ when the model makes a mistake.
 | No reading SSH, cloud or shell credentials | **Enforced** (`deny`) | `.claude/settings.json` |
 | No editing shell startup files | **Enforced** (`deny`) | `.claude/settings.json` |
 | No `git stash` (shared between worktrees) | **Enforced** (`deny`) | `.claude/settings.json` |
+| No forced `git worktree remove` (it throws away unsaved work) | **Enforced** (`deny`) | `.claude/settings.json` |
 | No force-push, hard reset or force branch delete | **Enforced** (`deny`) | `.claude/settings.json` |
 | No `sudo` | **Enforced** (`deny`) | `.claude/settings.json` |
 | Web browsing asks first | **Enforced** (`ask`): WebFetch and WebSearch prompt the grown-up. Making a mod never needs them | `.claude/settings.json` |
