@@ -38,10 +38,15 @@ WORKFLOW = [
     'git status', 'git diff', 'git log --oneline -5', 'git add -A', 'git commit -m "Add a dragon"',
     'git push -u origin dragon', 'git pull', 'git switch -c dragon', 'git branch', 'git merge main',
     'git worktree list', 'git worktree add .worktrees/dragon -b feat/dragon origin/main',
+    'git worktree remove .worktrees/update', 'git branch -d chore/update-buddy-builder',
+    'git fetch origin', 'git fetch upstream', 'git merge upstream/main', 'git merge --ff-only origin/main',
+    'git push origin HEAD:main',
     'unzip -l mods/buddymod-1.0.jar',
 ]
 # Things that must still stop: a grown-up decides.
-MUST_STOP = ['git push --force origin main', 'git reset --hard', 'git stash', 'sudo apt-get install x']
+MUST_STOP = ['git push --force origin main', 'git reset --hard', 'git stash', 'sudo apt-get install x',
+             'git branch -D chore/update-buddy-builder', 'git worktree remove --force .worktrees/x',
+             'git worktree remove -f .worktrees/x']
 
 
 def rules(kind):
