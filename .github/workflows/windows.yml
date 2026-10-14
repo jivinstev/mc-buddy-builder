@@ -246,7 +246,8 @@ jobs:
           $env:JAVA_HOME = [Environment]::GetEnvironmentVariable('JAVA_HOME','User')
           Remove-Item Env:PYTHON -ErrorAction SilentlyContinue      # the build finds it in .env.local
           Set-Location "$env:RUNNER_TEMP\buddy"
-          .\gradlew.bat build -Pmc=1.21.1 --console=plain
+          # Quoted: Windows PowerShell splits an unquoted -Pmc=1.21.1 at the first dot.
+          .\gradlew.bat build '-Pmc=1.21.1' --console=plain
           if ($LASTEXITCODE -ne 0) { throw 'gradlew.bat build failed' }
           exit 0
 
