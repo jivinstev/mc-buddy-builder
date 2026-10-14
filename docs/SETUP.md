@@ -8,21 +8,33 @@ cd my-mod
 ./setup
 ```
 
+On Windows, use the one-line install in the [README](../README.md#on-windows) instead: it installs
+Git and Python first, then does exactly this with `.\setup.cmd` (the same setup, for PowerShell).
+
 Before you start: install Minecraft: Java Edition from minecraft.net, open the launcher once and
-sign in, then quit it. That's the only thing setup can't do for you. Buddy Builder works on a Mac for
-now.
+sign in, then quit it. That's the only thing setup can't do for you. Buddy Builder works on a Mac
+and on Windows.
 
 `./setup` asks a few questions, each with a recommendation you can accept with Enter. It installs
 what's missing only after you say yes:
 
-1. **Tools.** Java 21 (on a Mac it downloads Eclipse Temurin into `~/Library/Java`; no password),
-   Claude Code, and the GitHub CLI (with Homebrew, then a browser sign-in to GitHub).
+1. **Tools.** Java 21, Claude Code, and the GitHub CLI (then a browser sign-in to GitHub).
+   - On a Mac, Java is Eclipse Temurin, downloaded into `~/Library/Java` (no password). The GitHub
+     CLI comes from Homebrew.
+   - On Windows, Java is the same Temurin zip, unpacked into `%LOCALAPPDATA%\BuddyBuilder\jdk-21`.
+     That needs no administrator prompt, and setup points `JAVA_HOME` and your PATH at it. Claude
+     Code and the GitHub CLI come from winget, and setup re-reads PATH so they work straight away.
+     It also gives Git Bash a `python3` command (a small script in `~\bin`), and tells Claude Code
+     where Python is (`.claude/settings.local.json`, never committed). It checks long paths too,
+     and offers `git config --global core.longpaths true`.
 2. **Minecraft.** The version to build for: 26.2, the newest, unless it finds an install that already
    runs NeoForge on 1.21.1. Then it gets Minecraft ready to play it: it installs NeoForge and adds a
-   **Buddy Builder (26.2)** profile to the Minecraft launcher, with its own game folder
-   (`~/Library/Application Support/minecraft-26.2`) so your normal worlds and mods are never touched.
-   The mod goes into that profile's `mods` folder. If the launcher is open, setup asks you to quit it
-   first. Already have an instance you'd rather use? `./setup --mods-dir /path/to/its/mods`.
+   **Buddy Builder (26.2)** profile to the Minecraft launcher, with its own game folder so your
+   normal worlds and mods are never touched: `~/Library/Application Support/minecraft-26.2` on a Mac,
+   `%APPDATA%\.minecraft-26.2` on Windows (next to the launcher's own `.minecraft`). The mod goes
+   into that profile's `mods` folder. If the launcher is open, setup asks you to quit it first. On
+   Windows, the Microsoft Store / Xbox app launcher keeps its profiles in a file of its own, and setup
+   adds the profile there too. Already have an instance you'd rather use? `./setup --mods-dir /path/to/its/mods`.
 3. **Your mod's name.** Optional: you can let your child pick it later with `/name-my-mod`.
 4. **Where your copy lives:**
    - **private** (recommended): a new private repo on your GitHub account. Updates from Buddy
@@ -31,12 +43,14 @@ what's missing only after you say yes:
      child builds is visible to anyone.
    - **local**: no GitHub repo for now.
 
-It writes `.env.local` (never committed) and turns on the git hooks. It's safe to run again: it keeps
+It writes `.env.local` (never committed) and turns on the git hooks. On Windows `.env.local` also
+records `PYTHON`, the interpreter the build uses. It's safe to run again: it keeps
 your earlier answers and anything you edited by hand. `./setup --check` shows what it would change.
 
 Your family builds and tests one Minecraft version. Buddy Builder's own CI builds both.
 
-**Getting Buddy Builder updates:** run `./setup` again. If there are updates it asks, brings them
+**Getting Buddy Builder updates:** run setup again (on Windows, `.\setup.cmd` or the one-line
+install). If there are updates it asks, brings them
 in, checks the mod still builds, and pushes. Then start a new Claude session so it uses them. If it
 can't do that safely (for example your copy and the update changed the same file), it changes nothing
 and tells you to ask Claude to run `/update-buddy-builder`, which sorts out the overlap.

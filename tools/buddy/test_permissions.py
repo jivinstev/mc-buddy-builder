@@ -50,7 +50,7 @@ MUST_STOP = ['git push --force origin main', 'git reset --hard', 'git stash', 's
 
 
 def rules(kind):
-    return json.loads(SETTINGS.read_text())['permissions'].get(kind, [])
+    return json.loads(SETTINGS.read_text(encoding='utf-8'))['permissions'].get(kind, [])
 
 
 def bash_match(rule, cmd):
@@ -96,7 +96,7 @@ def static():
         for n, line in enumerate(script.read_text(encoding='utf-8').splitlines(), 1):
             if re.search(r'\bmktemp\b|\$\{?TMPDIR|(^|[\s"=])/tmp/', line) and not line.lstrip().startswith('#'):
                 fails.append('%s:%d writes outside the project (use build/): %s' % (script.relative_to(ROOT), n, line.strip()))
-    if '.worktrees/' not in (ROOT / '.gitignore').read_text().split():
+    if '.worktrees/' not in (ROOT / '.gitignore').read_text(encoding='utf-8').split():
         fails.append('.worktrees/ must be in .gitignore, or `git add -A` picks up worktrees')
     return fails
 
@@ -104,7 +104,7 @@ def static():
 def live_probe(prompt):
     p = subprocess.run(['claude', '-p', prompt, '--permission-mode', 'default', '--model',
                         'claude-haiku-4-5-20251001', '--output-format', 'stream-json', '--verbose'],
-                       cwd=ROOT, capture_output=True, text=True, timeout=300)
+                       cwd=ROOT, capture_output=True, text=True, timeout=300, encoding='utf-8')
     denied, used = [], 0
     for line in p.stdout.splitlines():
         try:

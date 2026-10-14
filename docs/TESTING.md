@@ -35,8 +35,9 @@ word `All`: Minecraft prints it on a pass and not on a failure.
 A client test is a small state machine inside the game: create a world, run the feature the way a
 player would (a real command, a real right-click), then check the world and write PASS or FAIL. It
 is the only gate that can see sounds, rendering, menus and anything that only happens in
-singleplayer. Run it on a machine with a display, or on Linux under `xvfb-run` with software
-OpenGL.
+singleplayer. Run it on a machine with a display (a Mac or a Windows PC opens a game window), or
+on Linux under `xvfb-run` with software OpenGL. Some Windows VMs have no usable OpenGL; there,
+Windows CI runs Gate C with Mesa's software renderer.
 
 Two things that make client tests trustworthy:
 - **Stop the game pausing.** Singleplayer pauses when its window loses focus, which turns into a
@@ -83,5 +84,6 @@ New block textures: draw them as text in `art/` and run `tools/buddy/make_textur
 header). `tools/buddy/test_make_texture.py` checks it.
 
 The pause guard is `client/test/ClientTestPauseGuard.java`. `./tools/client-test.sh` runs Gate C on
-macOS (a window opens) or headless Linux (Xvfb), writes the verdict and photo to `build/client-test/` (inside the project, so Claude can look at the photo without a permission prompt),
-and exits 0 PASS, 1 FAIL, 2 can't run here, 3 no verdict.
+macOS or Windows (a window opens; on Windows, from Git Bash) or headless Linux (Xvfb), writes the verdict and photo to `build/client-test/` (inside the project, so Claude can look at the photo without a permission prompt),
+and exits 0 PASS, 1 FAIL, 2 can't run here, 3 no verdict. On a timeout it stops the whole game,
+on Windows too (there it ends the process tree, since `kill` reaches only Git Bash's side).

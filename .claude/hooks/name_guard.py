@@ -9,7 +9,9 @@ Two ways past it, both deliberate:
   KEEP_STARTER_NAME=yes in .env.local   the family chose to keep "Buddy Mod"
   BUDDY_MAINTAINER=1 in the environment  someone working on Buddy Builder's own starter mod
 Exit 0 allows, exit 2 refuses (Claude Code shows stderr to Claude). Never fails closed on a bug:
-anything unexpected allows, because a broken guard must not stop a child's session cold."""
+anything unexpected allows, because a broken guard must not stop a child's session cold. The one
+exception is a path it cannot place relative to the project (another drive on Windows): while the mod
+is unnamed that is refused, since it cannot tell whether the path is inside src/ or art/."""
 import json, os, re, sys
 
 GUARDED = ('src', 'art')
@@ -19,18 +21,7 @@ REASON = ('The mod still has the starter name ("Buddy Mod"), so its files stay u
           '.env.local.')
 
 
-def blocked(root, path, env):
-    if env.get('BUDDY_MAINTAINER') == '1' or not path:
-        return False
-    rel = os.path.relpath(os.path.abspath(os.path.join(root, path)), root)
-    parts = rel.split(os.sep)
-    # A worktree in .worktrees/<name> is its own checkout: judge it by its own gradle.properties.
-    # .env.local is only ever in the main project folder.
-    checkout = root
-    if len(parts) > 2 and parts[0] == '.worktrees':
-        checkout, parts = os.path.join(root, parts[0], parts[1]), parts[2:]
-    if parts[0] not in GUARDED:
-        return False
+def starter_named(checkout, root):
     try:
         props = open(os.path.join(checkout, 'gradle.properties'), encoding='utf-8').read()
     except OSError:
@@ -45,9 +36,29 @@ def blocked(root, path, env):
     return True
 
 
+def blocked(root, path, env):
+    if env.get('BUDDY_MAINTAINER') == '1' or not path:
+        return False
+    try:
+        rel = os.path.relpath(os.path.abspath(os.path.join(root, path)), root)
+    except ValueError:      # Windows: another drive (or a path form relpath cannot compare)
+        return starter_named(root, root)
+    # Windows file names ignore case: SRC\x.java is src/x.java there.
+    names, parts = rel.split(os.sep), os.path.normcase(rel).split(os.sep)
+    # A worktree in .worktrees/<name> is its own checkout: judge it by its own gradle.properties.
+    # .env.local is only ever in the main project folder.
+    checkout = root
+    if len(parts) > 2 and parts[0] == '.worktrees':
+        checkout, parts = os.path.join(root, names[0], names[1]), parts[2:]
+    if parts[0] not in GUARDED:
+        return False
+    return starter_named(checkout, root)
+
+
 def main():
     try:
-        event = json.load(sys.stdin)
+        # Bytes, decoded as UTF-8: Windows Python would read stdin as cp1252 and garble the path.
+        event = json.loads(sys.stdin.buffer.read().decode('utf-8'))
         inp = event.get('tool_input') or {}
         path = inp.get('file_path') or inp.get('notebook_path') or ''
         root = os.environ.get('CLAUDE_PROJECT_DIR') or event.get('cwd') or os.getcwd()

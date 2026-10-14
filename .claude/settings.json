@@ -74,7 +74,10 @@
       "Edit(~/.ssh/**)",
       "Edit(~/.bashrc)",
       "Edit(~/.zshrc)",
-      "Edit(~/.zprofile)"
+      "Edit(~/.zprofile)",
+      "Edit(~/.bash_profile)",
+      "Edit(~/Documents/WindowsPowerShell/**)",
+      "Edit(~/Documents/PowerShell/**)"
     ]
   },
   "hooks": {
@@ -87,7 +90,7 @@
           },
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/session_start.py\""
+            "command": "bash \"$CLAUDE_PROJECT_DIR/tools/py.sh\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/session_start.py\""
           }
         ]
       }
@@ -98,7 +101,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/name_guard.py\""
+            "command": "bash \"$CLAUDE_PROJECT_DIR/tools/py.sh\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/name_guard.py\""
           }
         ]
       }

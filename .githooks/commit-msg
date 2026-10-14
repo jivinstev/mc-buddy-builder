@@ -1,2 +1,3 @@
 #!/bin/sh
-exec python3 tools/check-private-terms.py --message "$1"
+# tools/py.sh: python3 here, the real Python 3 on Windows (where python3 only opens the Store).
+exec bash tools/py.sh tools/check-private-terms.py --message "$1"

@@ -15,7 +15,7 @@ def copy_repo(dst):
 
 
 def run(cwd, *args):
-    return subprocess.run([sys.executable, *args], cwd=cwd, capture_output=True, text=True)
+    return subprocess.run([sys.executable, *args], cwd=cwd, capture_output=True, text=True, encoding='utf-8')
 
 
 def leftovers(root, needles):
@@ -38,7 +38,7 @@ def leftovers(root, needles):
 
 
 def main():
-    old_id = [l.split('=', 1)[1].strip() for l in open(os.path.join(ROOT, 'gradle.properties'))
+    old_id = [l.split('=', 1)[1].strip() for l in open(os.path.join(ROOT, 'gradle.properties'), encoding='utf-8')
               if l.startswith('mod_id=')][0]
     fails = []
     with tempfile.TemporaryDirectory() as t:
@@ -55,13 +55,13 @@ def main():
         else:
             left = leftovers(repo, [old_id])
             fails += ['old name left behind: ' + h for h in left]
-            props = open(os.path.join(repo, 'gradle.properties')).read()
+            props = open(os.path.join(repo, 'gradle.properties'), encoding='utf-8').read()
             for want in ('mod_id=dragontreasure', 'mod_name=Dragon Treasure', 'mod_group_id=com.dragontreasure'):
                 if want not in props:
                     fails.append('gradle.properties is missing ' + want)
             if not os.path.isfile(os.path.join(repo, 'src/main/java/com/dragontreasure/DragonTreasureMod.java')):
                 fails.append('main class was not renamed to DragonTreasureMod')
-            lang = open(os.path.join(repo, 'src/main/resources/assets/dragontreasure/lang/en_us.json')).read()
+            lang = open(os.path.join(repo, 'src/main/resources/assets/dragontreasure/lang/en_us.json'), encoding='utf-8').read()
             if '"itemGroup.dragontreasure": "Dragon Treasure"' not in lang:
                 fails.append('creative tab name not updated: ' + lang)
             # The renamed tree must still prepare for both versions.

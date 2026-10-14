@@ -3,6 +3,7 @@
 """First-run setup for a Buddy Builder mod. Usually run as `./setup`.
 
     ./setup                  asks each question with a recommendation; Enter accepts it
+                             (on Windows, from PowerShell: .\\setup.cmd, with the same options)
     ./setup --yes            take every recommendation (re-run: keep every earlier answer)
     ./setup --check          change nothing; say what setup would do
     ./setup --target 1.21.1 --mods-dir ~/path/mods --name "Dragon Treasure" --repo private
@@ -12,9 +13,12 @@ WHAT IT DOES
        into your main, checks the mod still builds, pushes, and starts setup again with the new
        version. Anything it can't do safely (a conflict, unsaved changes, a failed build) it undoes,
        and tells you to ask Claude to run /update-buddy-builder instead.
-    1. Checks the tools, and installs what's missing (asking first): Java 21 (on a Mac, no password
-       needed), Claude Code, and the GitHub CLI (with Homebrew). git and Python come with the Mac's
-       developer tools.
+    1. Checks the tools, and installs what's missing (asking first): Java 21 (into this user's own
+       folder: no password or administrator prompt), Claude Code, and the GitHub CLI. On a Mac,
+       Claude Code comes from its installer and gh from Homebrew; git and Python come with the Mac's
+       developer tools. On Windows, Claude Code and gh come from winget (install.ps1 has already
+       installed git and Python the same way), and setup also gives Git Bash a `python3` command,
+       points Claude Code at the real Python, and checks long paths and the Administrator window.
     2. Picks the Minecraft version (the newest this mod supports, unless an install here already
        runs NeoForge on a supported one), then gets Minecraft ready to play it: NeoForge, and a
        "Buddy Builder (<version>)" profile in the Minecraft launcher with its own game folder, so
@@ -44,17 +48,25 @@ SYS = platform.system()
 UPSTREAM = 'jivinstev/mc-buddy-builder'
 sys.path.insert(0, str(ROOT / 'tools' / 'buddy'))
 
+# winget searches every source it has, and when the Microsoft Store source fails (0x8a15005e: its
+# certificate pinning, behind TLS inspection or on a VM with a wrong clock) it installs nothing at all.
+# Nothing here needs the Store, so every winget line names its source.
+WINGET = ['winget', 'install', '-e', '--source', 'winget', '--accept-package-agreements',
+          '--accept-source-agreements', '--id']
 HINTS = {
-    'git': {'Darwin': 'xcode-select --install', 'Windows': 'winget install --id Git.Git',
+    'git': {'Darwin': 'xcode-select --install', 'Windows': 'winget install -e --source winget --id Git.Git',
             'Linux': 'sudo apt install git'},
-    'java': {'Darwin': 'brew install --cask temurin@21', 'Windows': 'winget install --id EclipseAdoptium.Temurin.21.JDK',
+    'java': {'Darwin': 'brew install --cask temurin@21', 'Windows': 'run setup again and answer yes to Java 21',
              'Linux': 'sudo apt install openjdk-21-jdk'},
     'claude': {'Darwin': 'https://docs.claude.com/en/docs/claude-code/setup',
-               'Windows': 'https://docs.claude.com/en/docs/claude-code/setup',
+               'Windows': 'winget install -e --source winget --id Anthropic.ClaudeCode',
                'Linux': 'https://docs.claude.com/en/docs/claude-code/setup'},
-    'gh': {'Darwin': 'brew install gh', 'Windows': 'winget install --id GitHub.cli',
+    'gh': {'Darwin': 'brew install gh', 'Windows': 'winget install -e --source winget --id GitHub.cli',
            'Linux': 'https://cli.github.com'},
 }
+# What setup runs on Windows to install a missing tool. Only package managers that check what they
+# download (winget verifies each installer's hash against its manifest), never a script piped into a shell.
+WINGET_IDS = {'claude': 'Anthropic.ClaudeCode', 'gh': 'GitHub.cli'}
 
 
 CLAUDE_INSTALL = 'curl -fsSL https://claude.ai/install.sh | bash'
@@ -67,17 +79,29 @@ def hint(tool):
 
 
 def run(cmd, cwd=ROOT, check=False):
-    p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+    try:
+        p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding='utf-8', errors='replace')
+    except OSError as e:            # not installed, or (Windows) not a program CreateProcess can start
+        if check:
+            raise SystemExit('setup: `%s` could not start: %s' % (' '.join(cmd), e))
+        return 127, str(e)
     if check and p.returncode != 0:
         raise SystemExit('setup: `%s` failed:\n%s' % (' '.join(cmd), p.stdout + p.stderr))
-    return p.returncode, (p.stdout + p.stderr).strip()
+    return p.returncode, ((p.stdout or '') + (p.stderr or '')).strip()
+
+
+def write_lf(path, text):
+    """UTF-8 with LF endings on every OS. Windows text mode would write CRLF, and bash reads these files
+    (.env.local, the python3 shim): a trailing \\r there is a broken value or `$'\\r': not found`."""
+    with open(path, 'w', encoding='utf-8', newline='\n') as f:
+        f.write(text)
 
 
 # ── .env.local ────────────────────────────────────────────────────────────────────────────
 def read_env():
     out = {}
     if ENV.is_file():
-        for line in ENV.read_text().splitlines():
+        for line in ENV.read_text(encoding='utf-8').splitlines():
             m = re.match(r'\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$', line)
             if m and not line.lstrip().startswith('#'):
                 out[m.group(1)] = m.group(2).strip().strip('"').strip("'")
@@ -85,7 +109,7 @@ def read_env():
 
 
 def write_env(changes):
-    lines = ENV.read_text().splitlines() if ENV.is_file() else [
+    lines = ENV.read_text(encoding='utf-8').splitlines() if ENV.is_file() else [
         '# Written by ./setup. Never committed. Edit freely; a hand edit always wins.']
     out, seen = [], set()
     for line in lines:
@@ -98,7 +122,7 @@ def write_env(changes):
     out += ['%s=%s' % (k, v) for k, v in changes.items() if k not in seen]
     if ENV.is_file():
         shutil.copy2(ENV, ENV.with_name('.env.local.bak'))
-    ENV.write_text('\n'.join(out) + '\n')
+    write_lf(ENV, '\n'.join(out) + '\n')
 
 
 def mods_key(target):
@@ -144,11 +168,33 @@ def recommend(installs, targets):
 
 
 # ── asking ────────────────────────────────────────────────────────────────────────────────
+def keyboard():
+    """Is someone at a keyboard? On Windows isatty() is also true for NUL (what a program started with
+    no input gets, Claude Code's commands included), so there it must be a real console."""
+    try:
+        if not sys.stdin.isatty():
+            return False
+        if SYS != 'Windows':
+            return True
+        import ctypes, msvcrt
+        mode = ctypes.c_uint()
+        return bool(ctypes.windll.kernel32.GetConsoleMode(msvcrt.get_osfhandle(sys.stdin.fileno()), ctypes.byref(mode)))
+    except (AttributeError, ImportError, OSError, ValueError):
+        return False
+
+
 class Ask:
     def __init__(self, a):
         self.interactive = not (a.yes or a.check)
         # Claude Code runs ./setup with no keyboard attached: a question would just stop setup.
-        if self.interactive and not sys.stdin.isatty():
+        if self.interactive and not keyboard():
+            # Git Bash's own window (mintty) is a keyboard that Windows Python cannot see as one. A
+            # person is there (./setup told us so), and taking every answer for them would install
+            # things and make a GitHub repo without asking: stop and say where to run it instead.
+            if SYS == 'Windows' and os.environ.get('BUDDY_SETUP_TTY') == '1':
+                raise SystemExit('setup: Git Bash\'s window cannot pass your answers to Windows Python. Run it '
+                                 'from PowerShell instead:  .\\setup.cmd   (or here: ./setup --yes to take '
+                                 'every recommendation without being asked)')
             self.interactive = False
             print('(no keyboard here, so taking every recommendation, as --yes does)')
 
@@ -234,11 +280,22 @@ def main():
     if update_step(ask, a, cloud):
         # Setup itself may have changed: run the new one, which finds nothing more to update.
         sys.stdout.flush()      # execv drops anything still buffered
-        os.execv(sys.executable, [sys.executable, str(pathlib.Path(__file__).resolve())] + sys.argv[1:])
+        again = [sys.executable, str(pathlib.Path(__file__).resolve())] + sys.argv[1:]
+        if SYS == 'Windows':
+            # Windows has no real exec: os.execv starts a new process and returns the console to the
+            # shell while the new setup still reads the keyboard. Wait for it instead.
+            sys.exit(subprocess.call(again))
+        os.execv(sys.executable, again)
 
     print('1. Tools')
     import install_game
     tools_step(ask, a, cloud, notes, install_game)
+    if SYS == 'Windows' and not cloud:
+        windows_step(ask, a, notes)
+        # The build's Python (build.gradle reads PYTHON from .env.local on Windows, when ./gradlew is run
+        # from a window Claude Code did not start). A hand edit that still works is kept.
+        if not (env.get('PYTHON') and pathlib.Path(env['PYTHON']).is_file()):
+            changes['PYTHON'] = pathlib.Path(sys.executable).as_posix()
 
     print('2. Minecraft')
     targets = supported_targets()
@@ -270,7 +327,7 @@ def main():
         changes[key] = mods_dir
 
     print('3. Your mod\'s name')
-    props = dict(re.findall(r'(?m)^(mod_id|mod_name)=(.*)$', (ROOT / 'gradle.properties').read_text()))
+    props = dict(re.findall(r'(?m)^(mod_id|mod_name)=(.*)$', (ROOT / 'gradle.properties').read_text(encoding='utf-8')))
     if props.get('mod_id') == 'buddymod':
         print('   It is still called "Buddy Mod". Pick a name now, or later with /name-my-mod in Claude Code.')
         name = a.name if a.name is not None else ask('Name (Enter to decide later)', '')
@@ -286,7 +343,7 @@ def main():
             # Commit it, so the copy pushed below (and every branch made from main) has the new name.
             run(['git', 'add', '-A'])
             run(['git', '-c', 'core.hooksPath=/dev/null', 'commit', '-q', '-m', 'Name the mod: ' + name])
-    repo_name = re.findall(r'(?m)^mod_id=(.*)$', (ROOT / 'gradle.properties').read_text())[0]
+    repo_name = re.findall(r'(?m)^mod_id=(.*)$', (ROOT / 'gradle.properties').read_text(encoding='utf-8'))[0]
 
     print('4. Where your copy lives')
     r = remotes()
@@ -340,7 +397,8 @@ def main():
     else:
         print('Next: type `claude` here and let your child say hi. To play what they make, open the')
         print('Minecraft launcher and pick the "Buddy Builder" profile.')
-    print('Build and test by hand: ./gradlew build, ./tools/gate-b.sh, ./tools/client-test.sh')
+    print('Build and test by hand%s: ./gradlew build, ./tools/gate-b.sh, ./tools/client-test.sh'
+          % (' (in Git Bash)' if SYS == 'Windows' else ''))
     return 0
 
 
@@ -385,8 +443,15 @@ def update_step(ask, a, cloud):
         print('   skipped the build check (BUDDY_SETUP_OFFLINE)')
     else:
         print('   checking the mod still builds (the first time takes a few minutes)...')
-        if subprocess.run(['./gradlew', 'build', '-q', '--console=plain'], cwd=ROOT,
-                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
+        # Windows cannot start the ./gradlew shell script itself; gradlew.bat is the same wrapper.
+        gradlew = str(ROOT / 'gradlew.bat') if SYS == 'Windows' else './gradlew'
+        try:
+            built = subprocess.run([gradlew, 'build', '-q', '--console=plain'], cwd=ROOT,
+                                   env=dict(os.environ, PYTHON=sys.executable),
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+        except OSError as e:    # the merge is already in: undo it, never leave it half-checked
+            return undo('the build could not start (%s)' % e)
+        if not built:
             return undo('the mod did not build with the update')
     if 'origin' in r and run(['git', 'push', '-q', 'origin', 'HEAD:main'])[0] != 0:
         print('   updated here, but could not push to GitHub; run `git push origin main` later')
@@ -410,7 +475,9 @@ def offer(ask, a, question, notes, manual):
 
 
 def tools_step(ask, a, cloud, notes, install_game):
-    print('   %-8s ok' % 'python3')
+    if SYS == 'Windows':
+        refresh_path()          # installs made from another window: see them here too
+    print('   %-8s ok (%s, Python %s)' % ('python', sys.executable, platform.python_version()))
     if shutil.which('git'):
         print('   %-8s ok' % 'git')
     else:
@@ -423,16 +490,23 @@ def tools_step(ask, a, cloud, notes, install_game):
         print('   %-8s the cloud tools step installs it' % 'java')
     else:
         print('   %-8s MISSING: the build and the NeoForge installer need Java 21' % 'java')
-        if SYS == 'Darwin' and offer(ask, a, 'Install Java 21 (Eclipse Temurin, about 200 MB)?', notes, hint('java')):
+        if SYS in ('Darwin', 'Windows') and offer(ask, a, 'Install Java 21 (Eclipse Temurin, about 200 MB)?', notes, hint('java')):
             try:
-                install_game.install_java(lambda m: print('   ' + m))
+                java = install_game.install_java(lambda m: print('   ' + m))
                 print('   java     installed')
             except Exception as e:
                 notes.append('Java 21 did not install (%s). Install it by hand: %s' % (e, hint('java')))
-        elif SYS != 'Darwin':
+        elif SYS not in ('Darwin', 'Windows'):
             notes.append('install Java 21: ' + hint('java'))
+    if SYS == 'Windows' and java and not a.check:
+        windows_java_home(java, notes)
     if shutil.which('claude') or cloud:
         print('   %-8s ok' % 'claude')
+    elif SYS == 'Windows':
+        print('   %-8s MISSING' % 'claude')
+        if offer(ask, a, 'Install Claude Code (winget)?', notes, hint('claude')):
+            if not winget_install('claude', notes):
+                notes.append('Claude Code did not install. Install it by hand: ' + hint('claude'))
     elif (pathlib.Path.home() / '.local/bin/claude').exists():
         print('   %-8s installed in ~/.local/bin, but not on your PATH yet' % 'claude')
         notes.append('open a NEW terminal window so the `claude` command works (or run ~/.local/bin/claude)')
@@ -448,7 +522,10 @@ def tools_step(ask, a, cloud, notes, install_game):
         return
     if not shutil.which('gh'):
         print('   %-8s MISSING (for your private copy on GitHub)' % 'gh')
-        if shutil.which('brew') and offer(ask, a, 'Install the GitHub CLI with Homebrew?', notes, 'brew install gh'):
+        if SYS == 'Windows':
+            if offer(ask, a, 'Install the GitHub CLI (winget)?', notes, hint('gh')):
+                winget_install('gh', notes)
+        elif shutil.which('brew') and offer(ask, a, 'Install the GitHub CLI with Homebrew?', notes, 'brew install gh'):
             subprocess.run(['brew', 'install', 'gh'])
     if shutil.which('gh'):
         if run(['gh', 'auth', 'status'])[0] == 0:
@@ -459,11 +536,207 @@ def tools_step(ask, a, cloud, notes, install_game):
                 subprocess.run(['gh', 'auth', 'login', '--web', '--git-protocol', 'https'])
 
 
+# ── Windows ───────────────────────────────────────────────────────────────────────────────
+def refresh_path():
+    """An install changes PATH in the registry, for NEW windows, not in this process. Re-read it (Machine,
+    then User, as a new window would), keeping what this process already had, so a tool installed a
+    moment ago, or from another window, is found now."""
+    have = os.environ.get('PATH', '').split(os.pathsep)
+    new = []
+    try:
+        import winreg
+        for hive, key in ((winreg.HKEY_LOCAL_MACHINE, r'SYSTEM\CurrentControlSet\Control\Session Manager\Environment'),
+                          (winreg.HKEY_CURRENT_USER, 'Environment')):
+            try:
+                with winreg.OpenKey(hive, key) as k:
+                    new += [os.path.expandvars(x) for x in winreg.QueryValueEx(k, 'Path')[0].split(';')]
+            except OSError:
+                pass
+    except ImportError:
+        pass
+    local_bin = pathlib.Path.home() / '.local' / 'bin'      # Claude Code's own installer puts it here
+    if local_bin.is_dir():
+        new.append(str(local_bin))
+    os.environ['PATH'] = os.pathsep.join(have + [x for x in dict.fromkeys(new) if x and x not in have])
+
+
+def windows_user_env(name, value, notes, why):
+    """Set a user environment variable for every new window (through .NET, which also tells Explorer;
+    setx would cut a long value at 1024 characters), and in this process."""
+    if OFFLINE:             # a test run never changes the real user's settings
+        notes.append('skipped (BUDDY_SETUP_OFFLINE): set %s=%s (%s)' % (name, value, why))
+        return
+    quoted = value.replace("'", "''")                      # a PowerShell single-quoted string
+    code, out = run(['powershell', '-NoProfile', '-Command',
+                     "[Environment]::SetEnvironmentVariable('%s', '%s', 'User')" % (name, quoted)])
+    if name != 'Path':
+        os.environ[name] = value
+    notes.append('set %s for new windows (%s)' % (name, why) if code == 0
+                 else 'could not set %s (%s): %s' % (name, why, out[:200]))
+
+
+def windows_user_path_add(folder, notes, why, first=False):
+    """Put a folder on the user's PATH for every new window, if it is not there yet. `first` puts it
+    before the rest of the user PATH, where the Microsoft Store's python3 stub lives."""
+    folder = str(folder)
+    code, cur = run(['powershell', '-NoProfile', '-Command', "[Environment]::GetEnvironmentVariable('Path','User')"])
+    if code != 0:
+        return
+    parts = [x for x in cur.strip().split(';') if x]
+    if folder.lower() in [x.lower().rstrip('\\/') for x in parts]:
+        return
+    windows_user_env('Path', ';'.join([folder] + parts if first else parts + [folder]), notes, why)
+    if folder not in os.environ.get('PATH', '').split(os.pathsep):
+        os.environ['PATH'] = os.pathsep.join([folder, os.environ.get('PATH', '')] if first
+                                             else [os.environ.get('PATH', ''), folder])
+
+
+def winget_install(tool, notes):
+    """winget, then a PATH re-read; True if the tool is found afterwards."""
+    if not shutil.which('winget'):
+        notes.append('winget is missing: update "App Installer" from the Microsoft Store, then run setup again')
+        return False
+    cmd = WINGET + [WINGET_IDS[tool]]
+    print('   %-8s installing: %s' % (tool, ' '.join(cmd)), flush=True)
+    try:
+        subprocess.run(cmd)
+    except OSError as e:
+        print('   %-8s the installer did not run: %s' % (tool, e))
+    refresh_path()
+    found = shutil.which(tool)
+    print('   %-8s %s' % (tool, 'installed' if found else 'still MISSING'))
+    if found and tool == 'claude':
+        # A new window must find it too (Claude Code's docs ask people to do this by hand).
+        windows_user_path_add(pathlib.Path(found).parent, notes, 'so new windows find claude')
+    return bool(found)
+
+
+def windows_java_home(java, notes):
+    """gradlew finds Java through JAVA_HOME or PATH. Point both at this JDK when neither already
+    reaches Java 21 (an old JAVA_HOME, or the JDK setup itself unpacked)."""
+    import install_game
+    home = pathlib.Path(java).parent.parent
+    cur = os.environ.get('JAVA_HOME')
+    cur_ok = cur and install_game.java_major(pathlib.Path(cur) / 'bin' / 'java.exe') >= 21
+    if not cur_ok:
+        windows_user_env('JAVA_HOME', str(home), notes, 'Java %d, for ./gradlew' % install_game.java_major(java))
+    on_path = shutil.which('java')
+    if not (on_path and install_game.java_major(on_path) >= 21):
+        windows_user_path_add(home / 'bin', notes, 'so new windows find Java 21', first=True)
+
+
+def is_windows_admin():
+    try:
+        import ctypes
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except (ImportError, AttributeError, OSError):
+        return False
+
+
+SHIM_MARK = "# Written by Buddy Builder's setup"
+
+
+def bash_shim(name, why, command, check, notes):
+    """A small script in ~/bin, which Git Bash puts first on PATH, so a command the skills, the
+    allow rules and the docs use works in Git Bash. A ~/bin/<name> that setup did not write is left alone."""
+    shim = pathlib.Path.home() / 'bin' / name
+    body = '#!/bin/sh\n%s (tools/buddy/setup.py): %s\n%s\n' % (SHIM_MARK, why, command)
+    if shim.exists():
+        try:
+            have = shim.read_text(encoding='utf-8')
+        except (OSError, ValueError):
+            have = ''
+        if SHIM_MARK not in have:
+            print('   %-8s %s exists and is not setup\'s: left alone' % (name, shim))
+            return
+        if have == body:
+            print('   %-8s %s' % (name, shim))
+            return
+    if check:
+        print('   would write %s (%s)' % (shim, why))
+        return
+    try:
+        shim.parent.mkdir(parents=True, exist_ok=True)
+        write_lf(shim, body)
+        print('   %-8s wrote %s' % (name, shim))
+    except OSError as e:
+        notes.append('could not write %s: %s' % (shim, e))
+
+
+def claude_local_settings(check, notes):
+    """.claude/settings.local.json (never committed) gives Claude Code's commands on this PC: the real
+    Python for ./gradlew's Python steps, UTF-8 output from the tools, and updates for a winget install
+    (which does not update itself). Values already there are kept."""
+    path = ROOT / '.claude' / 'settings.local.json'
+    want = {'PYTHON': pathlib.Path(sys.executable).as_posix(), 'PYTHONUTF8': '1',
+            'CLAUDE_CODE_PACKAGE_MANAGER_AUTO_UPDATE': '1'}
+    try:
+        data = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
+    except (OSError, ValueError):
+        notes.append('%s is not valid JSON, so it was left alone; add to its "env": %s' % (path, want))
+        return
+    env = data.setdefault('env', {})
+    add = {k: v for k, v in want.items() if k not in env}
+    if not add:
+        print('   %-8s %s' % ('claude', 'settings.local.json: Python ok'))
+        return
+    if check:
+        print('   would add to .claude/settings.local.json env: %s' % ', '.join(add))
+        return
+    env.update(add)
+    write_lf(path, json.dumps(data, indent=2) + '\n')
+    print('   %-8s .claude/settings.local.json: %s' % ('claude', ', '.join(add)))
+
+
+def long_paths(ask, a, notes):
+    """Windows' 260-character path limit. Gradle's caches run deep, and the failure (a file 'not found'
+    that is there) does not say why. Java copes; git does not unless core.longpaths is on."""
+    enabled = None
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r'SYSTEM\CurrentControlSet\Control\FileSystem') as k:
+            enabled = winreg.QueryValueEx(k, 'LongPathsEnabled')[0] == 1
+    except (ImportError, OSError):
+        pass
+    git_long = run(['git', 'config', '--get', 'core.longpaths'])[1].strip().lower() == 'true'
+    print('   %-8s Windows %s, git core.longpaths %s' % ('paths', 'on' if enabled else 'OFF' if enabled is False
+                                                       else 'unknown', 'on' if git_long else 'OFF'))
+    if enabled is False:
+        notes.append('Windows long paths are off. Builds usually still work; if one fails with a file "not '
+                     'found" that is there, turn them on (PowerShell as Administrator, once): New-ItemProperty '
+                     '-Path HKLM:\\SYSTEM\\CurrentControlSet\\Control\\FileSystem -Name LongPathsEnabled -Value 1 '
+                     '-PropertyType DWORD -Force')
+    if not git_long and not a.check and not OFFLINE and \
+            ask('Turn on long paths for git (git config --global core.longpaths true)? (yes/no)', 'yes', ['yes', 'no']) == 'yes':
+        run(['git', 'config', '--global', 'core.longpaths', 'true'])
+
+
+def windows_step(ask, a, notes):
+    """What Windows needs beyond the tools: a python3 for Git Bash, Claude Code's settings, long paths."""
+    if is_windows_admin():
+        print('   %-8s this window is running as Administrator' % 'admin')
+        notes.append('this window runs as Administrator: what setup installs for you lands where your '
+                     'everyday windows may not look. Next time, open PowerShell with a plain click.')
+    # The skills, the allow rules and the docs say `python3`; Windows Python has no python3 command
+    # (only a Store stub). The shim also makes Python print UTF-8 with LF (tools/winpy).
+    exe = pathlib.Path(sys.executable).as_posix()
+    winpy = (ROOT / 'tools' / 'winpy').as_posix()
+    bash_shim('python3', 'Windows Python has no python3 command',
+              'export PYTHONUTF8=1\nexport PYTHONPATH="%s${PYTHONPATH:+;$PYTHONPATH}"\nexec "%s" "$@"' % (winpy, exe),
+              a.check, notes)
+    unzip = shutil.which('unzip')
+    if not unzip or (os.path.getsize(unzip) < 4096 and SHIM_MARK in pathlib.Path(unzip).read_text(encoding='utf-8', errors='replace')):
+        bash_shim('unzip', 'Git for Windows has no unzip; tools/buddy/zipls.py takes its -l/-p/-Z1 flags',
+                  'exec "%s" "%s" "$@"' % (exe, (ROOT / 'tools' / 'buddy' / 'zipls.py').as_posix()), a.check, notes)
+    if not a.check:
+        # Git Bash puts ~/bin first only in a login shell; on the user PATH every bash finds the shims.
+        windows_user_path_add(pathlib.Path.home() / 'bin', notes, 'so Git Bash finds python3', first=True)
+    claude_local_settings(a.check, notes)
+    long_paths(ask, a, notes)
+
+
 def game_step(ask, a, target, notes, install_game):
     """Get Minecraft ready to play this version. Returns the mods folder, or '' if it isn't ready."""
-    if SYS == 'Windows':
-        notes.append('Windows is not supported yet: set up NeoForge %s by hand and use --mods-dir' % target)
-        return ''
     missing = install_game.status(target)
     mods = str(install_game.game_dir(target) / 'mods')
     if not missing:
@@ -478,7 +751,8 @@ def game_step(ask, a, target, notes, install_game):
     def wait_for_launcher():
         if not ask.interactive:
             return False
-        input('   The Minecraft launcher is open. Quit it (Cmd+Q), then press Enter: ')
+        input('   The Minecraft launcher is open. Quit it (%s), then press Enter: '
+              % ('close its window, and check the taskbar\'s hidden icons' if SYS == 'Windows' else 'Cmd+Q'))
         return True
     try:
         install_game.ensure(target, say=lambda m: print('   ' + m), wait_for_launcher=wait_for_launcher)
