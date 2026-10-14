@@ -168,11 +168,26 @@ def recommend(installs, targets):
 
 
 # ── asking ────────────────────────────────────────────────────────────────────────────────
+def keyboard():
+    """Is someone at a keyboard? On Windows isatty() is also true for NUL (what a program started with
+    no input gets, Claude Code's commands included), so there it must be a real console."""
+    try:
+        if not sys.stdin.isatty():
+            return False
+        if SYS != 'Windows':
+            return True
+        import ctypes, msvcrt
+        mode = ctypes.c_uint()
+        return bool(ctypes.windll.kernel32.GetConsoleMode(msvcrt.get_osfhandle(sys.stdin.fileno()), ctypes.byref(mode)))
+    except (AttributeError, ImportError, OSError, ValueError):
+        return False
+
+
 class Ask:
     def __init__(self, a):
         self.interactive = not (a.yes or a.check)
         # Claude Code runs ./setup with no keyboard attached: a question would just stop setup.
-        if self.interactive and not sys.stdin.isatty():
+        if self.interactive and not keyboard():
             # Git Bash's own window (mintty) is a keyboard that Windows Python cannot see as one. A
             # person is there (./setup told us so), and taking every answer for them would install
             # things and make a GitHub repo without asking: stop and say where to run it instead.
