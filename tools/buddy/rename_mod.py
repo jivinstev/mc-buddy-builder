@@ -99,7 +99,9 @@ def apply(p, dry):
         if new != old:
             changes.append('edit ' + os.path.relpath(path, ROOT))
             if not dry:
-                open(path, 'w', encoding='utf-8').write(new)
+                # LF on every OS: Windows text mode would write CRLF and churn every committed file.
+                with open(path, 'w', encoding='utf-8', newline='\n') as f:
+                    f.write(new)
 
     def prop(s):
         s = re.sub(r'(?m)^mod_id=.*$', 'mod_id=' + p['new_id'], s)

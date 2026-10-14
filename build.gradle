@@ -28,6 +28,12 @@ def readEnvLocal(String key) {
     return value ?: null
 }
 
+// The Python the Exec tasks run: python3 on macOS and Linux. On Windows the python.org install has
+// no python3 (Windows' own python3.exe only opens the Microsoft Store), so: $PYTHON (setup gives it to
+// Claude Code), then PYTHON in .env.local (setup writes it there), then the py launcher.
+def python = System.getProperty('os.name').toLowerCase().contains('windows')
+        ? (System.getenv('PYTHON') ?: readEnvLocal('PYTHON') ?: 'py') : 'python3'
+
 ext.mcTarget = project.findProperty('mc') ?: readEnvLocal('MC_TARGET') ?: '26.2'
 def versionFile = file("versions/${ext.mcTarget}.properties")
 if (!versionFile.exists()) {
@@ -73,7 +79,7 @@ def prepareSources = tasks.register('prepareSources', Exec) {
     def gtArgs = project.hasProperty('gametest_adapter')
             ? ['--gametest-adapter', mod_id, '--gametest-pkg', "${mod_group_id}.compat",
                '--gametest-structure', 'empty_test'] : []
-    commandLine(['python3', 'tools/buddy/prepare-sources.py',
+    commandLine([python, 'tools/buddy/prepare-sources.py',
             '--src', 'src/main/java',
             '--overlay', "src/${overlay}/java",
             '--renames', "versions/${mcTarget}.renames.tsv",
@@ -91,7 +97,7 @@ def prepareTestSources = tasks.register('prepareTestSources', Exec) {
     inputs.file(renameHits)
     outputs.dir(preparedTestJava)
     dependsOn prepareSources
-    commandLine('python3', 'tools/buddy/prepare-sources.py',
+    commandLine(python, 'tools/buddy/prepare-sources.py',
             '--src', 'src/test/java',
             '--renames', "versions/${mcTarget}.renames.tsv",
             '--hits-in', renameHits.get().asFile.absolutePath,
@@ -110,7 +116,7 @@ tasks.named('compileTestJava') { dependsOn prepareTestSources }
 def checkPrivateTerms = tasks.register('checkPrivateTerms', Exec) {
     description = 'Fail if a private term appears in a tracked file'
     outputs.upToDateWhen { false }
-    commandLine 'python3', 'tools/check-private-terms.py'
+    commandLine python, 'tools/check-private-terms.py'
 }
 tasks.named('check') { dependsOn checkPrivateTerms }
 
@@ -194,8 +200,13 @@ tasks.withType(JavaCompile).configureEach {
     options.compilerArgs << '-Xmaxerrs' << '100000'
 }
 
-// Install the built jar into your Minecraft mods folder. ATOMIC: overwriting a jar in
-// place while Minecraft is running corrupts the live game, so stage then move.
+// Install the built jar into your Minecraft mods folder. Never two copies, never a half-written jar:
+//   1. copy the new jar in under a temporary name (not *.jar, so Minecraft never loads it);
+//   2. move every jar it replaces out of the way. On Windows a running Minecraft holds its jars
+//      open and none of them can be moved: then put back what was moved, delete the copy, and
+//      stop with "quit Minecraft first", leaving the folder exactly as it was;
+//   3. move the new jar into place, then delete the old ones.
+// On macOS and Linux step 2 always works, and a running game keeps the jar it already loaded.
 // .env.local: MINECRAFT_MODS_DIR_<version with dots as underscores>, else MINECRAFT_MODS_DIR.
 tasks.register('deployToMods') {
     dependsOn 'build'
@@ -211,18 +222,29 @@ tasks.register('deployToMods') {
         def jarName = "${base.archivesName.get()}-${mod_version}.jar"
         def src = file("build/libs/${jarName}")
         if (!src.exists()) throw new GradleException("built jar not found: ${src}")
-        // Remove our own older jars for this version so two copies never load at once.
-        target.listFiles().findAll { it.name.startsWith("${mod_id}-mc${minecraft_version}-") && it.name != jarName }
-              .each { println "removing older ${it.name}"; it.delete() }
-        def dest = new File(target, jarName)
-        def tmp = new File(target, jarName + '.tmp-' + System.nanoTime())
+        def stamp = System.nanoTime()
+        def tmp = new File(target, "${jarName}.tmp-${stamp}")
+        // Ours for this Minecraft version: the jar being replaced and any older version of it.
+        def ours = target.listFiles().findAll { it.isFile() && it.name.startsWith("${mod_id}-mc${minecraft_version}-") && it.name.endsWith('.jar') }
+        def moved = [:]   // original -> where it was moved
         try {
             java.nio.file.Files.copy(src.toPath(), tmp.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-            try {
-                java.nio.file.Files.move(tmp.toPath(), dest.toPath(),
-                        java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE)
-            } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
-                java.nio.file.Files.move(tmp.toPath(), dest.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            for (f in ours) {
+                def aside = new File(target, "${f.name}.old-${stamp}")
+                try {
+                    java.nio.file.Files.move(f.toPath(), aside.toPath())
+                    moved[f] = aside
+                } catch (java.io.IOException e) {
+                    moved.each { orig, away -> java.nio.file.Files.move(away.toPath(), orig.toPath()) }
+                    moved.clear()
+                    throw new GradleException("${f.name} is in use, most likely by a running Minecraft. Quit Minecraft " +
+                            "(the game, not only the world), then run deployToMods again. Nothing in ${modsDir} was changed.")
+                }
+            }
+            java.nio.file.Files.move(tmp.toPath(), new File(target, jarName).toPath())
+            moved.each { orig, away ->
+                if (orig.name != jarName) println "removed older ${orig.name}"
+                away.delete()
             }
             println "Installed ${jarName} into ${modsDir}. Restart Minecraft to load it."
         } finally {

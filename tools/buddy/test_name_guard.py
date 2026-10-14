@@ -10,21 +10,21 @@ HOOK = pathlib.Path(__file__).resolve().parents[2] / '.claude/hooks/name_guard.p
 
 
 def run(root, path, mod_id='buddymod', env_local=None, extra_env=None, tool='Edit', wt_mod_id=None):
-    (root / 'gradle.properties').write_text('mod_id=%s\nmod_name=X\n' % mod_id)
+    (root / 'gradle.properties').write_text('mod_id=%s\nmod_name=X\n' % mod_id, encoding='utf-8')
     wt = root / '.worktrees/dragon'
     if wt.is_dir():
-        (wt / 'gradle.properties').write_text('mod_id=%s\nmod_name=X\n' % (wt_mod_id or mod_id))
+        (wt / 'gradle.properties').write_text('mod_id=%s\nmod_name=X\n' % (wt_mod_id or mod_id), encoding='utf-8')
     envf = root / '.env.local'
     envf.unlink(missing_ok=True)
     if env_local is not None:
-        envf.write_text(env_local)
+        envf.write_text(env_local, encoding='utf-8')
     env = {k: v for k, v in os.environ.items() if k != 'BUDDY_MAINTAINER'}
     env['CLAUDE_PROJECT_DIR'] = str(root)
     env.update(extra_env or {})
     key = 'notebook_path' if tool == 'NotebookEdit' else 'file_path'
     p = subprocess.run([sys.executable, str(HOOK)], input=json.dumps(
-        {'tool_name': tool, 'tool_input': {key: path}, 'cwd': str(root)}),
-        capture_output=True, text=True, env=env)
+        {'tool_name': tool, 'tool_input': {key: path}, 'cwd': str(root)}, ensure_ascii=False),
+        capture_output=True, text=True, env=env, encoding='utf-8')
     return p.returncode, p.stderr
 
 
@@ -51,7 +51,13 @@ def main():
             ('unnamed worktree of a named main is refused', dict(path=str(wt / 'src/x.java'), mod_id='dragontreasure', wt_mod_id='buddymod'), 2),
             ('main .env.local unlocks a worktree too', dict(path=str(wt / 'src/x.java'), env_local='KEEP_STARTER_NAME=yes\n'), 0),
             ('a worktree doc is fine', dict(path=str(wt / 'docs/x.md')), 0),
+            ('unnamed: a non-ASCII file name is refused', dict(path=str(root / 'src/main/java/Drache→ü.java')), 2),
         ]
+        if os.name == 'nt':
+            # Windows file names ignore case, and another drive cannot be placed inside the project.
+            cases += [('unnamed: SRC\\ (another case) is refused', dict(path=str(root / 'SRC/main/x.java')), 2),
+                      ('unnamed: a path on another drive is refused',
+                       dict(path=('Z:' if not str(root).upper().startswith('Z:') else 'Y:') + '\\src\\x.java'), 2)]
         for name, kw, want in cases:
             code, err = run(root, **kw)
             ok = code == want and (want == 0 or '/name-my-mod' in err)
@@ -59,7 +65,7 @@ def main():
             if not ok:
                 fails.append(name)
         # A broken input must allow, never stop a session cold.
-        p = subprocess.run([sys.executable, str(HOOK)], input='not json', capture_output=True, text=True)
+        p = subprocess.run([sys.executable, str(HOOK)], input='not json', capture_output=True, text=True, encoding='utf-8')
         if p.returncode != 0:
             fails.append('bad input did not allow')
         print('  %-48s %s' % ('bad input allows', 'ok' if p.returncode == 0 else 'FAIL'))

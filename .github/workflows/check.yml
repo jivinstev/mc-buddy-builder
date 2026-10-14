@@ -16,7 +16,9 @@ jobs:
       - name: Every commit message and author
         run: python3 tools/check-private-terms.py --commits HEAD
       - name: Settings parse
-        run: python3 -c "import json; json.load(open('.claude/settings.json'))"
+        run: python3 -c "import json; json.load(open('.claude/settings.json', encoding='utf-8'))"
+      - name: Every text open names its encoding (Windows defaults to cp1252)
+        run: python3 tools/check-encoding.py
       - name: Making a mod never stops for approval
         run: python3 tools/buddy/test_permissions.py
       - name: Rename tool

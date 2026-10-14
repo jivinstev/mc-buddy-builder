@@ -8,28 +8,35 @@ official Minecraft launcher with its own game folder. Used by tools/buddy/setup.
 
 WHAT IT DOES
     1. Java 21 or newer, for the build (Gradle) and for running the NeoForge installer. If there is
-       none, on a Mac it downloads Eclipse Temurin 21 from Adoptium into
-       ~/Library/Java/JavaVirtualMachines: no password, and the Mac's own `java` command finds it.
+       none, it downloads Eclipse Temurin 21 from Adoptium (checksum-checked) into a folder of this
+       user's own, so no password or administrator prompt is needed:
+         macOS    ~/Library/Java/JavaVirtualMachines, where the Mac's own `java` command finds it;
+         Windows  %LOCALAPPDATA%\\BuddyBuilder\\jdk-21 (setup then points JAVA_HOME and PATH at it).
     2. NeoForge, the exact version this mod builds against (versions/<target>.properties), installed
        with NeoForge's own installer (`--install-client`) into the official launcher's folder.
     3. A launcher profile called "Buddy Builder (<target>)" that plays that NeoForge with its own game
-       folder (minecraft-<target>, next to the launcher's folder), so the family's normal worlds and
-       mods are never touched. Its mods/ folder is where `./gradlew deployToMods` puts the mod.
+       folder (minecraft-<target> on a Mac, .minecraft-<target> on Windows, next to the launcher's
+       folder), so the family's normal worlds and mods are never touched. Its mods/ folder is where
+       `./gradlew deployToMods` puts the mod.
 
-    The launcher must have been opened once (it creates launcher_profiles.json), and must be closed
-    while the profile is written, or it overwrites the file when it quits. launcher_profiles.json is
-    backed up first, and a "NeoForge" profile the installer adds or repoints is put back as it was.
+    The launcher must have been opened once (it creates launcher_profiles.json; the Microsoft Store /
+    Xbox app launcher on Windows keeps launcher_profiles_microsoft_store.json instead, and both are
+    written when both are there), and must be closed while the profile is written, or it overwrites
+    the file when it quits. Each profiles file is backed up first, and a "NeoForge" profile the
+    installer adds or repoints is put back as it was.
     Running it again does only what is still missing.
 
 Standard library only.
 """
 import argparse, datetime, hashlib, json, os, pathlib, platform, re, shutil, subprocess, sys, tarfile
-import tempfile, urllib.request
+import tempfile, urllib.request, zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 SYS = platform.system()
 NEO_MAVEN = 'https://maven.neoforged.net/releases/net/neoforged/neoforge'
-ADOPTIUM = 'https://api.adoptium.net/v3/assets/latest/21/hotspot?os=mac&architecture=%s&image_type=jdk'
+ADOPTIUM = 'https://api.adoptium.net/v3/assets/latest/21/hotspot?os=%s&architecture=%s&image_type=jdk'
+# The official launcher's profiles; the Microsoft Store / Xbox app launcher uses the second.
+PROFILE_FILES = ('launcher_profiles.json', 'launcher_profiles_microsoft_store.json')
 PROFILE_ICON = 'Crafting_Table'
 
 
@@ -49,11 +56,24 @@ def get(url, dest=None):
 
 
 def run(cmd, **kw):
-    return subprocess.run(cmd, capture_output=True, text=True, **kw)
+    return subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', **kw)
+
+
+# The Windows launcher's process names: the current installer's and the older one's. (Bedrock is
+# Minecraft.Windows.exe, which is a different game and does not touch these files.)
+WINDOWS_LAUNCHERS = ('minecraft.exe', 'minecraftlauncher.exe')
 
 
 def launcher_running():
     """True if this user's official Minecraft launcher is open."""
+    if SYS == 'Windows':
+        # tasklist lists this session's processes; /FO CSV quotes the image name first on each line.
+        try:
+            p = run(['tasklist', '/FO', 'CSV', '/NH'], timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        return any(line.split(',', 1)[0].strip('"').lower() in WINDOWS_LAUNCHERS
+                   for line in p.stdout.splitlines() if line.strip())
     if SYS != 'Darwin':
         return False
     p = run(['ps', '-axo', 'uid=,comm='])
@@ -71,9 +91,23 @@ def launcher_dir():
     return home() / '.minecraft'
 
 
+def local_appdata():
+    return pathlib.Path(os.environ.get('LOCALAPPDATA') or home() / 'AppData/Local')
+
+
+def windows_jdk_dir():
+    """Where setup puts its own Java on Windows: this user's, so no administrator prompt."""
+    return local_appdata() / 'BuddyBuilder' / 'jdk-21'
+
+
+def profile_files():
+    """The launcher's profiles files that exist (one or both of PROFILE_FILES)."""
+    return [launcher_dir() / n for n in PROFILE_FILES if (launcher_dir() / n).is_file()]
+
+
 def game_dir(target):
-    """The profile's own game folder: minecraft-26.2 next to the launcher's minecraft folder (the
-    layout tools/buddy/find_minecraft.py already recognises)."""
+    """The profile's own game folder: minecraft-26.2 (.minecraft-26.2 on Windows) next to the
+    launcher's folder (the layout tools/buddy/find_minecraft.py already recognises)."""
     d = launcher_dir()
     return d.parent / ('%s-%s' % (d.name, target))
 
@@ -104,28 +138,55 @@ def java_major(java):
     return int(m.group(2) or 0) if major == 1 else major
 
 
-def find_java(minimum=21):
-    """A java that really runs (a Mac's /usr/bin/java is only a stub when no JDK is installed)."""
+def java_candidates():
+    """Every JDK java this looks at, in order: JAVA_HOME, PATH, then the usual install folders."""
+    exe = 'java.exe' if SYS == 'Windows' else 'java'
     cands = []
     if os.environ.get('JAVA_HOME'):
-        cands.append(pathlib.Path(os.environ['JAVA_HOME']) / 'bin/java')
+        cands.append(pathlib.Path(os.environ['JAVA_HOME']) / 'bin' / exe)
     if shutil.which('java'):
         cands.append(pathlib.Path(shutil.which('java')))
+    if SYS == 'Windows':
+        cands.append(windows_jdk_dir() / 'bin' / exe)
+        for pf in {os.environ.get('ProgramFiles') or 'C:/Program Files', os.environ.get('ProgramW6432') or 'C:/Program Files'}:
+            for vendor in ('Eclipse Adoptium', 'Java', 'Microsoft', 'Zulu'):
+                d = pathlib.Path(pf) / vendor
+                if d.is_dir():
+                    cands += sorted(d.glob('*/bin/' + exe), reverse=True)
     for jvms in (home() / 'Library/Java/JavaVirtualMachines', pathlib.Path('/Library/Java/JavaVirtualMachines')):
         if jvms.is_dir():
             cands += sorted(jvms.glob('*/Contents/Home/bin/java'), reverse=True)
-    for c in cands:
+    return cands
+
+
+def find_java(minimum=21):
+    """A JDK java that really runs (a Mac's /usr/bin/java is only a stub when no JDK is installed).
+    The build uses it too, so the Minecraft launcher's own Java (a runtime only) is not one of them."""
+    for c in java_candidates():
         if c.exists() and java_major(c) >= minimum:
             return c
     return None
 
 
+def launcher_java(minimum=21):
+    """The Minecraft launcher's own Java (<launcher dir>/runtime/**/bin/java[.exe]): enough to run the
+    NeoForge installer when there is no JDK yet."""
+    rt = launcher_dir() / 'runtime'
+    exe = 'java.exe' if SYS == 'Windows' else 'java'
+    for c in sorted(rt.glob('**/bin/' + exe), reverse=True) if rt.is_dir() else []:
+        if java_major(c) >= minimum:
+            return c
+    return None
+
+
 def install_java(say):
-    """Temurin 21 into ~/Library/Java/JavaVirtualMachines (a Mac only). Returns its java."""
+    """Temurin 21 into this user's own folder (see the docstring at the top). Returns its java."""
+    if SYS == 'Windows':
+        return install_java_windows(say)
     if SYS != 'Darwin':
-        raise RuntimeError('installing Java by itself only works on a Mac so far')
+        raise RuntimeError('installing Java by itself only works on a Mac or Windows so far')
     arch = 'aarch64' if platform.machine() == 'arm64' else 'x64'
-    pkg = json.loads(get(ADOPTIUM % arch))[0]['binary']['package']
+    pkg = json.loads(get(ADOPTIUM % ('mac', arch)))[0]['binary']['package']
     say('downloading %s (%d MB) from Adoptium' % (pkg['name'], pkg['size'] // 1_000_000))
     dest = home() / 'Library/Java/JavaVirtualMachines/temurin-21.jdk'
     with tempfile.TemporaryDirectory() as t:
@@ -143,19 +204,51 @@ def install_java(say):
     return dest / 'Contents/Home/bin/java'
 
 
+def install_java_windows(say):
+    """Adoptium's Windows zip into %LOCALAPPDATA%\\BuddyBuilder\\jdk-21: per user, no UAC prompt (the
+    .msi and winget would ask for administrator rights)."""
+    arch = 'aarch64' if platform.machine().lower() in ('arm64', 'aarch64') else 'x64'
+    pkg = json.loads(get(ADOPTIUM % ('windows', arch)))[0]['binary']['package']
+    say('downloading %s (%d MB) from Adoptium' % (pkg['name'], pkg['size'] // 1_000_000))
+    dest = windows_jdk_dir()
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    # Unpacked next to its final place, so the move is a rename on the same drive.
+    with tempfile.TemporaryDirectory(dir=dest.parent) as t:
+        z = pathlib.Path(t) / pkg['name']
+        get(pkg['link'], z)
+        if hashlib.sha256(z.read_bytes()).hexdigest() != pkg['checksum']:
+            raise RuntimeError('the Java download was damaged (checksum mismatch); run setup again')
+        out = pathlib.Path(t) / 'x'
+        with zipfile.ZipFile(z) as zf:
+            for m in zf.namelist():              # never outside out/
+                if m.startswith(('/', '\\')) or '..' in pathlib.PurePosixPath(m).parts:
+                    raise RuntimeError('the Java download has an unexpected file: ' + m)
+            zf.extractall(out)
+        top = next(p for p in out.iterdir() if (p / 'bin/java.exe').exists())
+        if dest.exists():
+            shutil.rmtree(dest)
+        shutil.move(str(top), str(dest))
+    return dest / 'bin/java.exe'
+
+
 # ── NeoForge and the profile ──────────────────────────────────────────────────────────────
 def neoforge_installed(target):
     return (launcher_dir() / 'versions' / ('neoforge-' + neo_version(target))).is_dir()
 
 
 def profile_ok(target):
-    try:
-        prof = json.loads((launcher_dir() / 'launcher_profiles.json').read_text(encoding='utf-8'))
-    except (OSError, ValueError):
-        return False
-    p = prof.get('profiles', {}).get(profile_key(target), {})
-    return (p.get('lastVersionId') == 'neoforge-' + neo_version(target)
-            and p.get('gameDir') == str(game_dir(target)))
+    """The profile is in every profiles file the launcher has."""
+    files = profile_files()
+    for f in files:
+        try:
+            prof = json.loads(f.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            return False
+        p = prof.get('profiles', {}).get(profile_key(target), {})
+        if not (p.get('lastVersionId') == 'neoforge-' + neo_version(target)
+                and p.get('gameDir') == str(game_dir(target))):
+            return False
+    return bool(files)
 
 
 def install_neoforge(target, java, say):
@@ -175,9 +268,10 @@ def install_neoforge(target, java, say):
         raise RuntimeError('the NeoForge installer did not finish:\n' + tail)
 
 
-def write_profile(target, before):
-    """Add our profile, and put back any profile the NeoForge installer added or changed."""
-    path = launcher_dir() / 'launcher_profiles.json'
+def write_profile(target, before, path=None):
+    """Add our profile to one profiles file, and put back any profile the NeoForge installer added or
+    changed in it."""
+    path = path or launcher_dir() / 'launcher_profiles.json'
     data = json.loads(path.read_text(encoding='utf-8'))
     profiles = data.setdefault('profiles', {})
     for key in list(profiles):
@@ -193,7 +287,8 @@ def write_profile(target, before):
     mine.setdefault('created', now)
     mine['lastUsed'] = now          # the launcher lists the most recently used profile first
     profiles[profile_key(target)] = mine
-    path.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+    with open(path, 'w', encoding='utf-8', newline='\n') as f:
+        f.write(json.dumps(data, indent=2) + '\n')
 
 
 # ── the whole thing ───────────────────────────────────────────────────────────────────────
@@ -202,7 +297,7 @@ def status(target):
     missing = []
     if not find_java():
         missing.append('Java 21')
-    if not (launcher_dir() / 'launcher_profiles.json').is_file():
+    if not profile_files():
         missing.append('the Minecraft launcher (or it has never been opened)')
         return missing
     if not neoforge_installed(target):
@@ -217,24 +312,27 @@ def status(target):
 def ensure(target, say=print, wait_for_launcher=None):
     """Install whatever is missing. Returns the mods folder. Raises RuntimeError with a message for
     the grown-up when it can't."""
-    java = find_java()
+    java = find_java() or launcher_java()
     if not java:
         java = install_java(say)
         say('Java 21: installed')
-    lp = launcher_dir() / 'launcher_profiles.json'
-    if not lp.is_file():
-        raise RuntimeError('Minecraft: Java Edition isn\'t set up on this Mac account yet. Install it from '
-                           'minecraft.net, open the launcher once and sign in, quit it, then run ./setup again.')
+    files = profile_files()
+    if not files:
+        raise RuntimeError('Minecraft: Java Edition isn\'t set up on this computer account yet. Install it '
+                           'from minecraft.net, open the launcher once and sign in, quit it, then run setup again.')
     if not (neoforge_installed(target) and profile_ok(target)):
         while launcher_running():
             if wait_for_launcher is None or not wait_for_launcher():
-                raise RuntimeError('quit the Minecraft launcher, then run ./setup again (it rewrites the '
+                raise RuntimeError('quit the Minecraft launcher, then run setup again (it rewrites the '
                                    'launcher\'s profiles when it quits, which would undo this step)')
-        shutil.copy2(lp, lp.with_name('launcher_profiles.json.buddy-builder.bak'))
-        before = json.loads(lp.read_text(encoding='utf-8')).get('profiles', {})
+        before = {}
+        for lp in files:
+            shutil.copy2(lp, lp.with_name(lp.name + '.buddy-builder.bak'))
+            before[lp] = json.loads(lp.read_text(encoding='utf-8')).get('profiles', {})
         if not neoforge_installed(target):
             install_neoforge(target, java, say)
-        write_profile(target, before)
+        for lp in files:
+            write_profile(target, before[lp], lp)
         say('launcher profile "%s": ready' % profile_name(target))
     mods = game_dir(target) / 'mods'
     mods.mkdir(parents=True, exist_ok=True)

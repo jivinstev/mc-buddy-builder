@@ -36,7 +36,7 @@ def main():
     failures = []
     with tempfile.TemporaryDirectory() as d:
         src, out = pathlib.Path(d, 'a.txt'), pathlib.Path(d, 'a.png')
-        src.write_text(ART)
+        src.write_text(ART, encoding='utf-8')
         if make_texture.main(['x', str(src), str(out)]) != 0:
             failures.append('a good picture was refused')
         else:
@@ -45,10 +45,10 @@ def main():
             if px[0][0] != b'\xff\x00\x00\xff': failures.append('R is not solid red: %r' % px[0][0])
             if px[0][2] != b'\x00\xff\x00\x80': failures.append('g lost its see-through-ness: %r' % px[0][2])
             if px[1][2] != b'\x00\x00\x00\x00': failures.append('. is not invisible')
-        src.write_text(ART + 'RRX\n')
+        src.write_text(ART + 'RRX\n', encoding='utf-8')
         if make_texture.main(['x', str(src), str(out)]) == 0:
             failures.append('a letter missing from the palette was accepted')
-        src.write_text(ART + 'RR\n')
+        src.write_text(ART + 'RR\n', encoding='utf-8')
         if make_texture.main(['x', str(src), str(out)]) == 0:
             failures.append('a short row was accepted')
     for f in failures:

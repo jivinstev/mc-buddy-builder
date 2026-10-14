@@ -22,21 +22,25 @@ def repo_copy(dst):
     subprocess.run(['git', 'remote', 'add', 'origin', 'https://github.com/jivinstev/mc-buddy-builder.git'], cwd=dst, check=True)
 
 
-def setup(repo, home, *args, cloud=False):
-    env = dict(os.environ, HOME=str(home), XDG_DATA_HOME=str(home / '.local/share'), BUDDY_SETUP_OFFLINE='1',
+def setup(repo, home, *args, cloud=False, extra=None):
+    # Windows finds the home folder through USERPROFILE (not HOME) and the launchers through APPDATA:
+    # all of them point into the fake home, so a test run never sees or changes the real ones.
+    env = dict(os.environ, HOME=str(home), USERPROFILE=str(home), APPDATA=str(home / 'AppData/Roaming'),
+               LOCALAPPDATA=str(home / 'AppData/Local'), XDG_DATA_HOME=str(home / '.local/share'), BUDDY_SETUP_OFFLINE='1',
                GIT_AUTHOR_NAME='t', GIT_AUTHOR_EMAIL='t@t', GIT_COMMITTER_NAME='t', GIT_COMMITTER_EMAIL='t@t')
     env.pop('MINECRAFT_DIR', None)
     env.pop('CLAUDE_CODE_REMOTE', None)
     if cloud:
         env['CLAUDE_CODE_REMOTE'] = 'true'
+    env.update(extra or {})
     # No keyboard, like Claude Code's own shell (and CI).
     return subprocess.run([sys.executable, 'tools/buddy/setup.py', *args], cwd=repo, env=env,
-                          capture_output=True, text=True, stdin=subprocess.DEVNULL)
+                          capture_output=True, text=True, stdin=subprocess.DEVNULL, encoding='utf-8')
 
 
 def env_of(repo):
     p = pathlib.Path(repo) / '.env.local'
-    return dict(l.split('=', 1) for l in p.read_text().splitlines() if '=' in l and not l.startswith('#')) if p.exists() else {}
+    return dict(l.split('=', 1) for l in p.read_text(encoding='utf-8').splitlines() if '=' in l and not l.startswith('#')) if p.exists() else {}
 
 
 def update_cases(t):
@@ -44,7 +48,7 @@ def update_cases(t):
     fails = []
     # CI runners have no git identity, and a failed commit would quietly break every case below.
     ident = dict(os.environ, GIT_AUTHOR_NAME='t', GIT_AUTHOR_EMAIL='t@t', GIT_COMMITTER_NAME='t', GIT_COMMITTER_EMAIL='t@t')
-    G = lambda repo, *a: subprocess.run(['git', *a], cwd=repo, capture_output=True, text=True, env=ident)
+    G = lambda repo, *a: subprocess.run(['git', *a], cwd=repo, capture_output=True, text=True, env=ident, encoding='utf-8')
 
     def family(name, change=None):
         """upstream (bare) <- family copy on main, with origin (bare); upstream then gets a new commit."""
@@ -56,11 +60,11 @@ def update_cases(t):
             G(repo, 'remote', 'remove', remote); G(repo, 'remote', 'add', remote, str(base / (remote + '.git')))
             G(repo, 'push', '-q', remote, 'main')
         work = base / 'bb'; G(base, 'clone', '-q', '-b', 'main', str(base / 'upstream.git'), 'bb')
-        (work / 'docs/NEW.md').write_text('new\n')
+        (work / 'docs/NEW.md').write_text('new\n', encoding='utf-8')
         if change:
             change(work)
         G(work, 'add', '-A'); G(work, 'commit', '-qm', 'A Buddy Builder improvement'); G(work, 'push', '-q')
-        (repo / '.env.local').write_text('MC_TARGET=26.2\n')
+        (repo / '.env.local').write_text('MC_TARGET=26.2\n', encoding='utf-8')
         return repo, base
 
     home = t / 'empty-home'
@@ -80,13 +84,13 @@ def update_cases(t):
         fails.append('--check must report the update and change nothing:\n' + r.stdout[-600:])
     # 3. Unsaved changes: leave it for Claude.
     repo, _ = family('up3')
-    (repo / 'README.md').write_text('mine\n')
+    (repo / 'README.md').write_text('mine\n', encoding='utf-8')
     r = setup(repo, home, '--yes')
     if (repo / 'docs/NEW.md').exists() or '/update-buddy-builder' not in r.stdout:
         fails.append('with unsaved changes setup must not update:\n' + r.stdout[-600:])
     # 4. A conflict: undo it completely and point at /update-buddy-builder.
-    repo, _ = family('up4', change=lambda w: (w / 'README.md').write_text('theirs\n'))
-    (repo / 'README.md').write_text('ours\n'); G(repo, 'commit', '-qam', 'family edit')
+    repo, _ = family('up4', change=lambda w: (w / 'README.md').write_text('theirs\n', encoding='utf-8'))
+    (repo / 'README.md').write_text('ours\n', encoding='utf-8'); G(repo, 'commit', '-qam', 'family edit')
     head = G(repo, 'rev-parse', 'HEAD').stdout
     r = setup(repo, home, '--yes')
     if G(repo, 'rev-parse', 'HEAD').stdout != head or G(repo, 'status', '--porcelain', '--untracked-files=no').stdout \
@@ -109,20 +113,21 @@ def main():
             fails.append('setup failed with no Minecraft: ' + r.stdout[-800:] + r.stderr[-800:])
         elif e.get('MC_TARGET') != '26.2' or any(k.startswith('MINECRAFT_MODS_DIR') for k in e):
             fails.append('with no install it should pick 26.2 and no mods folder, got %s' % e)
-        remotes = subprocess.run(['git', 'remote'], cwd=repo, capture_output=True, text=True).stdout.split()
+        remotes = subprocess.run(['git', 'remote'], cwd=repo, capture_output=True, text=True, encoding='utf-8').stdout.split()
         if 'upstream' not in remotes or 'origin' in remotes:
             fails.append('"local" should leave only an upstream remote, got %s' % remotes)
 
         # 2. A Prism instance running NeoForge for 1.21.1: that version is the recommendation. The
         #    mods folder is still the Buddy Builder launcher profile's, which a test run never installs.
         home = t / 'prism-home'
-        prism = 'Library/Application Support/PrismLauncher' if sys.platform == 'darwin' else '.local/share/PrismLauncher'
+        prism = {'darwin': 'Library/Application Support/PrismLauncher',
+                 'win32': 'AppData/Roaming/PrismLauncher'}.get(sys.platform, '.local/share/PrismLauncher')
         inst = home / prism / 'instances/My Pack'
         (inst / '.minecraft/mods').mkdir(parents=True)
         (inst / '.minecraft/mods/some-mod.jar').write_bytes(b'')
         (inst / 'mmc-pack.json').write_text(json.dumps({'components': [
             {'uid': 'net.minecraft', 'version': '1.21.1'},
-            {'uid': 'net.neoforged', 'version': '21.1.228'}]}))
+            {'uid': 'net.neoforged', 'version': '21.1.228'}]}), encoding='utf-8')
         repo = t / 'b'; repo_copy(repo)
         r = setup(repo, home, '--yes', '--repo', 'local')
         e = env_of(repo)
@@ -134,15 +139,15 @@ def main():
             fails.append('offline, setup must say what it skipped:\n' + r.stdout[-800:])
 
         # 3. A re-run with --yes changes nothing.
-        before = (repo / '.env.local').read_text()
+        before = (repo / '.env.local').read_text(encoding='utf-8')
         r = setup(repo, home, '--yes')
-        if r.returncode != 0 or (repo / '.env.local').read_text() != before or 'already up to date' not in r.stdout:
+        if r.returncode != 0 or (repo / '.env.local').read_text(encoding='utf-8') != before or 'already up to date' not in r.stdout:
             fails.append('a second --yes run changed something:\n' + r.stdout[-800:])
 
         # 4. A hand edit wins over a recommendation on a re-run.
-        (repo / '.env.local').write_text(before.replace('MC_TARGET=1.21.1', 'MC_TARGET=26.2'))
+        (repo / '.env.local').write_text(before.replace('MC_TARGET=1.21.1', 'MC_TARGET=26.2'), encoding='utf-8')
         r = setup(repo, home, '--yes')
-        if 'MC_TARGET=26.2' not in (repo / '.env.local').read_text():
+        if 'MC_TARGET=26.2' not in (repo / '.env.local').read_text(encoding='utf-8'):
             fails.append('a re-run overwrote a hand-edited MC_TARGET')
 
         # 4b. --mods-dir is used as given, and nothing is installed for it.
@@ -158,9 +163,9 @@ def main():
         subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'start', '--allow-empty'], cwd=repo)
         subprocess.run(['git', 'branch', '-M', 'some-pr-branch'], cwd=repo)
         r = setup(repo, t / 'empty-home', '--yes', '--repo', 'local', '--name', 'Lava Pets')
-        if 'mod_id=lavapets' not in (repo / 'gradle.properties').read_text():
+        if 'mod_id=lavapets' not in (repo / 'gradle.properties').read_text(encoding='utf-8'):
             fails.append('--name did not rename the mod:\n' + r.stdout[-600:])
-        git = lambda *a: subprocess.run(['git', *a], cwd=repo, capture_output=True, text=True).stdout.strip()
+        git = lambda *a: subprocess.run(['git', *a], cwd=repo, capture_output=True, text=True, encoding='utf-8').stdout.strip()
         if git('log', '-1', '--format=%s') != 'Name the mod: Lava Pets' or git('status', '--porcelain', '--', 'src', 'gradle.properties'):
             fails.append('the rename was not committed (the first push would have the starter name)')
         if git('branch', '--show-current') != 'main':
@@ -168,7 +173,7 @@ def main():
         # 6. In a cloud session: never touch the remotes, and report on the environment.
         repo = t / 'd'; repo_copy(repo)
         r = setup(repo, t / 'empty-home', '--yes', cloud=True)
-        remotes = subprocess.run(['git', 'remote'], cwd=repo, capture_output=True, text=True).stdout.split()
+        remotes = subprocess.run(['git', 'remote'], cwd=repo, capture_output=True, text=True, encoding='utf-8').stdout.split()
         if remotes != ['origin'] or '6. Cloud environment' not in r.stdout:
             fails.append('in the cloud, setup must leave origin alone and check the environment:\n' + r.stdout[-600:])
         # 7. Plain ./setup with no keyboard (the README's cloud step: Claude runs it, nobody can
@@ -178,6 +183,24 @@ def main():
         if r.returncode != 0 or env_of(repo).get('MC_TARGET') != '26.2' or 'Next:' not in r.stdout:
             fails.append('plain ./setup with no keyboard must finish like --yes (exit %d):\n%s'
                          % (r.returncode, r.stdout[-600:]))
+        # 8. Windows, in Git Bash's own window: a person is there but Windows Python sees no keyboard.
+        #    Setup must stop and point at setup.cmd, not answer every question for them.
+        if sys.platform == 'win32':
+            repo = t / 'f'; repo_copy(repo)
+            r = setup(repo, t / 'empty-home', extra={'BUDDY_SETUP_TTY': '1'})
+            if r.returncode == 0 or 'setup.cmd' not in r.stdout + r.stderr or (repo / '.env.local').exists():
+                fails.append('in mintty with no visible keyboard setup must refuse (exit %d):\n%s'
+                             % (r.returncode, (r.stdout + r.stderr)[-600:]))
+            # The python3 shim for Git Bash, written with LF, and Claude Code told about Python.
+            repo = t / 'b'
+            shim = t / 'prism-home/bin/python3'
+            if not shim.is_file() or b'\r' in shim.read_bytes():
+                fails.append('no python3 shim in ~/bin, or it has CRLF line endings')
+            local = json.loads((repo / '.claude/settings.local.json').read_text(encoding='utf-8'))
+            if local.get('env', {}).get('PYTHONUTF8') != '1' or not local['env'].get('PYTHON'):
+                fails.append('.claude/settings.local.json does not give Claude Code PYTHON and PYTHONUTF8: %s' % local)
+            if not env_of(repo).get('PYTHON'):
+                fails.append('.env.local has no PYTHON for the build')
         fails += update_cases(t)
     if fails:
         print('test_setup: FAIL')

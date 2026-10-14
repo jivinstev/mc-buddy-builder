@@ -46,7 +46,8 @@ public final class BuddyClientTest {
     private static final String TAG = "BUDDY_TEST";
     private static final boolean ENABLED = "true".equals(System.getProperty(P + "boottest"))
             && "buddy".equalsIgnoreCase(System.getProperty(P + "testmode", ""));
-    private static final Path SIG = Path.of(System.getProperty(P + "sigdir", "/tmp/buddymod-client"));
+    private static final Path SIG = System.getProperty(P + "sigdir") != null ? Path.of(System.getProperty(P + "sigdir"))
+            : Path.of(System.getProperty("java.io.tmpdir"), BuddyMod.MODID + "-client");   // the temp folder on every OS
 
     private enum Phase { WAIT_TITLE, WAIT_INGAME, ASSETS, BUILD, DROP, SHOOT, REPORT, DONE }
 

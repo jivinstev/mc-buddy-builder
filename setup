@@ -1,3 +1,9 @@
 #!/usr/bin/env bash
 # First-run setup. See tools/buddy/setup.py for what it asks and writes. Safe to re-run.
-exec python3 "$(dirname "$0")/tools/buddy/setup.py" "$@"
+# tools/python.sh finds the Python 3 command (python3; on Windows python or py -3). setup.cmd is the
+# same thing for cmd.exe and PowerShell.
+. "$(dirname "$0")/tools/python.sh" || exit 1
+# In Git Bash's own window (mintty) Windows Python cannot see the keyboard as one, so setup is told a
+# person is there: it then refuses rather than taking every recommendation without asking.
+[ -t 0 ] && export BUDDY_SETUP_TTY=1
+exec "$PYTHON" "$(dirname "$0")/tools/buddy/setup.py" "$@"

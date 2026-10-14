@@ -1,0 +1,375 @@
+# Native Windows, the way a family runs it: Git for Windows' bash plus a python.org-style Python
+# (which has `python` and `py`, NOT `python3`), and the one-line install in Windows PowerShell 5.1.
+# Issue #1. The Mac/Linux checks stay in check.yml and gates.yml.
+name: windows
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  # Weekly, so drift in what we don't control (the runner image, Git for Windows, winget, NeoForge,
+  # Mesa) shows up within a week rather than on the next Windows change.
+  schedule:
+    - cron: '17 6 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  static:
+    name: static (setup, hooks, self-tests)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      # The runner's git has core.autocrlf=true, like a fresh Git for Windows install: the checkout
+      # itself is the line-ending test.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: line endings survive core.autocrlf=true
+        run: |
+          echo "core.autocrlf=$(git config core.autocrlf)"
+          bad=$(git ls-files --eol | awk '$2 == "w/crlf" && $NF !~ /\.(bat|cmd)$/ {print $NF}')
+          if [ -n "$bad" ]; then echo "checked out with CRLF:"; echo "$bad"; exit 1; fi
+          git ls-files --eol gradlew.bat setup.cmd setup gradlew .githooks/commit-msg cloud/session_start.sh
+
+      # A python.org install has `python` and `py` but no `python3`, and Windows' own python3.exe only
+      # points at the Microsoft Store. The runner has a real python3: put a stub like Windows' in
+      # front of it, so from here on `python3` works only where Buddy Builder made it work.
+      - name: python3 is the Microsoft Store stub, as on a fresh PC
+        run: |
+          S="$RUNNER_TEMP/store-stub"; mkdir -p "$S"
+          printf '#!/bin/sh\necho "Python was not found; run without arguments to install from the Microsoft Store" >&2\nexit 49\n' > "$S/python3"
+          chmod +x "$S/python3"
+          cygpath -w "$S" >> "$GITHUB_PATH"
+      - name: (the stub is in front)
+        run: |
+          if python3 -c 'print(1)' 2>/dev/null; then echo "python3 still runs: the stub is not in front"; exit 1; fi
+          python --version
+
+      - name: encoding= on every text open (Windows defaults to cp1252)
+        run: python tools/check-encoding.py
+
+      - name: setup.cmd --check, from cmd.exe, in an empty home
+        shell: cmd
+        run: |
+          set "USERPROFILE=%RUNNER_TEMP%\home-cmd"
+          set "HOME=%RUNNER_TEMP%\home-cmd"
+          set "APPDATA=%RUNNER_TEMP%\home-cmd\AppData\Roaming"
+          set "LOCALAPPDATA=%RUNNER_TEMP%\home-cmd\AppData\Local"
+          mkdir "%APPDATA%" "%LOCALAPPDATA%"
+          call setup.cmd --check
+          if errorlevel 1 exit /b 1
+          if exist .env.local (echo --check wrote .env.local & exit /b 1)
+
+      - name: ./setup --check, from Git Bash, in an empty home
+        run: |
+          H="$RUNNER_TEMP/home-check"; mkdir -p "$H/AppData/Roaming" "$H/AppData/Local"
+          HOME="$H" USERPROFILE="$(cygpath -w "$H")" APPDATA="$(cygpath -w "$H/AppData/Roaming")" \
+            LOCALAPPDATA="$(cygpath -w "$H/AppData/Local")" ./setup --check
+          [ -z "$(ls -A "$H/AppData/Roaming")" ] && [ ! -e "$H/bin" ] && [ ! -e .env.local ] \
+            || { echo "--check wrote something"; exit 1; }
+
+      - name: ./setup --yes writes the python3 and unzip shims; a Git Bash finds them
+        env:
+          BUDDY_SETUP_OFFLINE: '1'
+        run: |
+          echo "unzip before setup: $(command -v unzip || echo none)"
+          H="$(cygpath -u "$RUNNER_TEMP")/home"; mkdir -p "$H/AppData/Roaming" "$H/AppData/Local"
+          HOME="$H" USERPROFILE="$(cygpath -w "$H")" APPDATA="$(cygpath -w "$H/AppData/Roaming")" \
+            LOCALAPPDATA="$(cygpath -w "$H/AppData/Local")" ./setup --yes --repo skip | tee "$RUNNER_TEMP/setup.log"
+          cat "$H/bin/python3"
+          if grep -q $'\r' "$H/bin/python3" .env.local .claude/settings.local.json; then echo "CRLF in a file bash reads"; exit 1; fi
+          grep '^PYTHON=' .env.local
+          grep -q '"PYTHONUTF8": "1"' .claude/settings.local.json || { echo "Claude Code was not given PYTHONUTF8"; exit 1; }
+          # Git for Windows' /etc/profile puts ~/bin first in a login shell; that is what makes the shim win.
+          found="$(HOME="$H" bash -lc 'command -v python3')"; echo "login bash: python3 = $found"
+          [ "$found" = "$H/bin/python3" ] || { echo "a login Git Bash did not put ~/bin first"; exit 1; }
+          if [ -e "$H/bin/unzip" ]; then
+            n="$("$H/bin/unzip" -l gradle/wrapper/gradle-wrapper.jar | grep -c '\.class$')"
+            echo "unzip shim: $n classes"; [ "$n" -gt 10 ] || exit 1
+          fi
+          "$H/bin/python3" -c 'import os, sys; print(sys.version); assert os.environ["PYTHONUTF8"] == "1"; print("→ ⚠ ”")'
+          # print() must end lines with LF for bash: $(...) and grep 'x$' break on CRLF
+          if "$H/bin/python3" -c 'print(1)' | grep -q $'\r'; then echo "the shim's python prints CRLF"; exit 1; fi
+          rm -f .env.local .env.local.bak .claude/settings.local.json
+          git status --porcelain
+          [ -z "$(git status --porcelain)" ] || { echo "setup changed tracked files"; exit 1; }
+
+      - name: discovery finds the official launcher, its .minecraft-<version> sibling and Prism under %APPDATA%
+        run: |
+          U="$(cygpath -u "$RUNNER_TEMP")/winprofile"; A="$U/AppData/Roaming"
+          mkdir -p "$A/.minecraft/versions/neoforge-21.1.228" "$A/.minecraft-26.2/mods" \
+                   "$A/PrismLauncher/instances/Pack/.minecraft/mods"
+          printf '{"components":[{"uid":"net.minecraft","version":"1.21.1"},{"uid":"net.neoforged","version":"21.1.228"}]}' \
+            > "$A/PrismLauncher/instances/Pack/mmc-pack.json"
+          out="$(USERPROFILE="$(cygpath -w "$U")" HOME="$U" APPDATA="$(cygpath -w "$A")" \
+                 python tools/buddy/find_minecraft.py --json --env "$RUNNER_TEMP/none")"
+          echo "$out"
+          python - "$out" <<'PY'
+          import json, sys
+          found = {f["source"]: f for f in json.loads(sys.argv[1])["installs"]}
+          print(sorted(found))
+          assert "official launcher default" in found, "%APPDATA%\\.minecraft was not found"
+          assert "separate per-version game directory" in found, ".minecraft-26.2 was not found"
+          assert any(k.startswith("Prism") for k in found), "the Prism instance was not found"
+          PY
+
+      # Git for Windows runs hooks with its own bash, where python3 is the Store stub (above): the hooks
+      # must find the real Python themselves. A ” in a commit message must not crash them (cp1252).
+      - name: the git hooks run under Git for Windows, with a non-ASCII commit message
+        run: |
+          git config core.hooksPath .githooks
+          git config user.name ci; git config user.email ci@example.invalid
+          echo "hook probe" > hook-probe.txt; git add hook-probe.txt
+          git commit -q -m 'A “quoted” → probe' 2>&1 | tee "$RUNNER_TEMP/hook.log"
+          grep -q "check-private-terms: clean" "$RUNNER_TEMP/hook.log" || { echo "the hooks did not run"; exit 1; }
+          [ "$(git log -1 --format=%s)" = 'A “quoted” → probe' ] || { echo "the commit did not land"; exit 1; }
+          git reset -q --soft HEAD~1; git rm -q --cached hook-probe.txt; rm hook-probe.txt
+          git config --unset core.hooksPath
+
+      # Claude Code runs hook commands with Git Bash on Windows: these are the exact commands from
+      # .claude/settings.json, with python3 still the Store stub.
+      - name: Claude Code's hooks find Python (name guard refuses, session start reports)
+        run: |
+          export CLAUDE_PROJECT_DIR="$PWD"
+          set +e
+          echo '{"tool_name":"Edit","tool_input":{"file_path":"SRC/main/java/x.java"}}' \
+            | bash "$CLAUDE_PROJECT_DIR/tools/py.sh" "$CLAUDE_PROJECT_DIR/.claude/hooks/name_guard.py"
+          code=$?; set -e
+          [ "$code" = 2 ] || { echo "the name guard did not refuse (exit $code)"; exit 1; }
+          bash "$CLAUDE_PROJECT_DIR/tools/py.sh" "$CLAUDE_PROJECT_DIR/.claude/hooks/session_start.py" | tee "$RUNNER_TEMP/ss.log"
+          grep -q "starter name" "$RUNNER_TEMP/ss.log"
+          bash cloud/session_start.sh && echo "cloud/session_start.sh: ok"
+
+      - name: private terms
+        run: |
+          python tools/check-private-terms.py --self-test
+          python tools/check-private-terms.py
+          python tools/check-private-terms.py --commits HEAD
+      - name: making a mod never stops for approval
+        run: python tools/buddy/test_permissions.py
+      - name: rename tool
+        run: python tools/buddy/test_rename_mod.py
+      - name: the mod is named before it is built
+        run: python tools/buddy/test_name_guard.py
+      - name: setup script
+        run: python tools/buddy/test_setup.py
+      - name: texture tool
+        run: python tools/buddy/test_make_texture.py
+      - name: setting up Minecraft to play (no network, a fake %APPDATA%)
+        run: python tools/buddy/test_install_game.py
+      - name: cloud doc steps match cloud/
+        run: python cloud/check_readme.py
+      - name: nothing above changed a tracked file
+        run: git status --porcelain && [ -z "$(git status --porcelain)" ]
+
+  bootstrap:
+    name: install.ps1 (the one-line install)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      BUDDY_REF: ci-bootstrap
+      BUDDY_NO_LAUNCH: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # install.ps1 clones a branch. This checkout may be a detached PR merge, so name it, and clone
+      # from here rather than from GitHub, so the code under test is this commit's.
+      - name: name this commit as a branch to clone
+        run: git branch ci-bootstrap HEAD
+
+      # Windows PowerShell 5.1 (`shell: powershell`), what a fresh PC has, and `| iex`, as the README says.
+      - name: it refuses an Administrator window, and installs nothing
+        shell: powershell
+        run: |
+          $env:BUDDY_REPO = $env:GITHUB_WORKSPACE; $env:BUDDY_DIR = "$env:RUNNER_TEMP\refused"
+          $out = Get-Content install.ps1 -Raw | Invoke-Expression *>&1 | Out-String
+          Write-Host $out
+          if ($global:BUDDY_RESULT -ne 'failed' -or (Test-Path $env:BUDDY_DIR)) { throw "ran elevated: $global:BUDDY_RESULT" }
+          if ($out -notmatch 'integrity: High' -or $out -notmatch 'STOPPED: this PowerShell is running as Administrator') { throw 'the refusal does not say why' }
+          exit 0
+
+      # The runner has git and Python, but not Claude Code: winget installs it for real. Java comes
+      # from setup's own per-user download whenever the runner's default Java is older than 21.
+      - name: install.ps1 clones, runs setup.cmd --yes, and leaves claude on PATH in this window
+        shell: powershell
+        run: |
+          $env:BUDDY_ALLOW_ADMIN = '1'; $env:BUDDY_REPO = $env:GITHUB_WORKSPACE; $env:BUDDY_DIR = "$env:RUNNER_TEMP\buddy"
+          $env:BUDDY_SETUP_ARGS = '--yes'
+          if (Get-Command claude -ErrorAction SilentlyContinue) { throw 'claude is already on the runner: this proves nothing' }
+          Write-Host "JAVA_HOME before: $env:JAVA_HOME"
+          Get-Content install.ps1 -Raw | Invoke-Expression
+          if ($global:BUDDY_RESULT -ne 'ok') { throw "install.ps1: $global:BUDDY_RESULT" }
+          claude --version; if ($LASTEXITCODE -ne 0) { throw 'claude does not run in this window' }
+          if (-not (Test-Path "$env:BUDDY_DIR\.env.local")) { throw 'setup wrote no .env.local' }
+          if ((Get-Location).Path -ne $env:BUDDY_DIR) { throw "left in $((Get-Location).Path), not the project" }
+          Get-Content "$env:BUDDY_DIR\.env.local"
+          exit 0
+
+      - name: a NEW window finds claude, Java 21+ and (in Git Bash) python3
+        shell: powershell
+        run: |
+          $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
+          $env:JAVA_HOME = [Environment]::GetEnvironmentVariable('JAVA_HOME','User')
+          if (-not $env:JAVA_HOME) { $env:JAVA_HOME = [Environment]::GetEnvironmentVariable('JAVA_HOME','Machine') }
+          claude --version; if ($LASTEXITCODE -ne 0) { throw 'claude is not on the persisted PATH' }
+          & "$env:JAVA_HOME\bin\java.exe" -version; if ($LASTEXITCODE -ne 0) { throw "no java under JAVA_HOME=$env:JAVA_HOME" }
+          # A plain (not login) Git Bash, with this PATH: ~/bin is on the user PATH, so python3 is the shim.
+          $bash = Join-Path (Split-Path (Split-Path (Get-Command git).Source)) 'bin\bash.exe'
+          # (On a family PC the Machine PATH has no python3; this runner's may have one of its own.)
+          & $bash -c 'command -v python3; python3 -c "import sys; print(sys.executable)"'
+          if ($LASTEXITCODE -ne 0) { throw 'a new Git Bash does not find python3' }
+          exit 0
+
+      - name: the project builds with gradlew.bat in that new window (what setup's update check runs)
+        shell: powershell
+        run: |
+          $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
+          $env:JAVA_HOME = [Environment]::GetEnvironmentVariable('JAVA_HOME','User')
+          Remove-Item Env:PYTHON -ErrorAction SilentlyContinue      # the build finds it in .env.local
+          Set-Location "$env:RUNNER_TEMP\buddy"
+          .\gradlew.bat build -Pmc=1.21.1 --console=plain
+          if ($LASTEXITCODE -ne 0) { throw 'gradlew.bat build failed' }
+          exit 0
+
+      - name: running the line again is safe (skips what is there; setup changes nothing)
+        shell: powershell
+        run: |
+          $env:BUDDY_ALLOW_ADMIN = '1'; $env:BUDDY_REPO = $env:GITHUB_WORKSPACE; $env:BUDDY_DIR = "$env:RUNNER_TEMP\buddy"
+          $env:BUDDY_SETUP_ARGS = '--yes'
+          $out = Get-Content install.ps1 -Raw | Invoke-Expression *>&1 | Out-String
+          Write-Host $out
+          if ($global:BUDDY_RESULT -ne 'ok') { throw "second run: $global:BUDDY_RESULT" }
+          if ($out -notmatch 'already installed') { throw 'the second run did not skip what is installed' }
+          # This step's PATH predates the install (as an old window's would): setup re-reads it.
+          if ($out -match 'claude\s+installing' -or $out -match 'downloading OpenJDK') { throw 'the second run installed something again' }
+          if ($out -notmatch '\.env\.local is already up to date') { throw 'the second run changed .env.local' }
+          exit 0
+
+  build:
+    name: Gates A, B, C + deploy (${{ matrix.mc }})
+    runs-on: windows-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        mc: ['1.21.1', '26.2']
+    env:
+      MC: ${{ matrix.mc }}
+      MESA_VERSION: 26.2.4
+      MESA_SHA256: 351fc8c8b695878ffb3eaa044b3ead08672a48b1a045e3c3e3975811df0f6695
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            25
+            21
+      - uses: gradle/actions/setup-gradle@v4
+
+      # As a family's PC is after setup: python3 is the Store stub, and the build finds Python through
+      # PYTHON in .env.local (setup writes it), not through python3.
+      - name: python3 is the Store stub; setup writes .env.local
+        env:
+          BUDDY_SETUP_OFFLINE: '1'
+        run: |
+          S="$RUNNER_TEMP/store-stub"; mkdir -p "$S"
+          printf '#!/bin/sh\nexit 49\n' > "$S/python3"; chmod +x "$S/python3"
+          cygpath -w "$S" >> "$GITHUB_PATH"
+          H="$(cygpath -u "$RUNNER_TEMP")/home"; mkdir -p "$H/AppData/Roaming" "$H/AppData/Local"
+          HOME="$H" USERPROFILE="$(cygpath -w "$H")" APPDATA="$(cygpath -w "$H/AppData/Roaming")" \
+            LOCALAPPDATA="$(cygpath -w "$H/AppData/Local")" python tools/buddy/setup.py --yes --repo skip --target "$MC"
+          cat .env.local
+
+      - name: Gate A (build + unit tests)
+        run: ./gradlew build -Pmc=$MC --console=plain
+      - name: Gate B (GameTests on a real server)
+        run: ./tools/gate-b.sh
+
+      - name: deployToMods installs one jar, and refuses (changing nothing) while the jar is in use
+        run: |
+          M="$(cygpath -m "$RUNNER_TEMP")/mods-$MC"; mkdir -p "$M"
+          key="MINECRAFT_MODS_DIR_${MC//./_}"; echo "$key=$M" >> .env.local
+          : > "$M/buddymod-mc$MC-0.9.0.jar"                       # an older version of ours: replaced
+          ./gradlew deployToMods -Pmc=$MC --console=plain
+          ls -la "$M"; [ "$(ls "$M" | grep -c '^buddymod-')" = 1 ] || { echo "not exactly one jar"; exit 1; }
+          jar="$(ls "$M"/buddymod-*.jar)"; before="$(sha256sum "$jar")"
+          # Hold the jar open the way a running Minecraft does (no delete/rename sharing).
+          w="$(cygpath -w "$jar")"
+          powershell -NoProfile -Command "\$f=[IO.File]::Open('$w','Open','Read','Read'); New-Item -ItemType File '$(cygpath -w "$RUNNER_TEMP")\locked' | Out-Null; Start-Sleep 600" &
+          holder=$!
+          while [ ! -f "$RUNNER_TEMP/locked" ]; do sleep 1; done
+          if ./gradlew deployToMods -Pmc=$MC --console=plain > "$RUNNER_TEMP/locked.log" 2>&1; then
+            cat "$RUNNER_TEMP/locked.log"; echo "deploy onto a jar in use did not fail"; exit 1
+          fi
+          grep -a "Quit Minecraft" "$RUNNER_TEMP/locked.log"
+          ls -la "$M"
+          [ "$(ls "$M")" = "$(basename "$jar")" ] || { echo "the mods folder changed"; exit 1; }
+          [ "$(sha256sum "$jar")" = "$before" ] || { echo "the jar changed"; exit 1; }
+          taskkill //F //T //PID "$(cat "/proc/$holder/winpid")" >/dev/null 2>&1 || true; kill "$holder" 2>/dev/null || true
+          sleep 3
+          ./gradlew deployToMods -Pmc=$MC --console=plain
+          [ "$(ls "$M")" = "$(basename "$jar")" ] || { echo "after quitting, deploy did not leave one jar"; exit 1; }
+
+      # The runner has no GPU: its desktop only has Windows' OpenGL 1.1, and Minecraft needs 3.2+.
+      # Mesa's llvmpipe opengl32.dll beside each java.exe is the Windows counterpart of the Linux CI's
+      # LIBGL_ALWAYS_SOFTWARE. A real Windows PC needs none of this.
+      - name: Mesa llvmpipe (pinned release, checksum verified) beside every java.exe
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/mesa.7z" \
+            "https://github.com/pal1000/mesa-dist-win/releases/download/$MESA_VERSION/mesa3d-$MESA_VERSION-release-msvc.7z"
+          echo "$MESA_SHA256  $RUNNER_TEMP/mesa.7z" | sha256sum -c -
+          7z x -y -o"$RUNNER_TEMP/mesa" "$RUNNER_TEMP/mesa.7z" >/dev/null
+          for d in "$(cygpath -u "$RUNNER_TOOL_CACHE")"/Java_* "$(cygpath -u "$USERPROFILE")/.gradle/jdks" \
+                   ${GRADLE_USER_HOME:+"$(cygpath -u "$GRADLE_USER_HOME")/jdks"}; do
+            [ -d "$d" ] || continue
+            find "$d" -name java.exe -path '*/bin/*' | while read -r j; do
+              cp "$RUNNER_TEMP/mesa/x64/"*.dll "$(dirname "$j")/" && echo "mesa -> $(dirname "$j")"
+            done
+          done
+          echo "GALLIUM_DRIVER=llvmpipe" >> "$GITHUB_ENV"
+
+      - name: Gate C (a real client, in a window)
+        run: TIMEOUT=1800 ./tools/client-test.sh
+
+      - name: the longest path the build made (Windows' limit is 260)
+        if: always()
+        run: |
+          python - "$(cygpath -w "$PWD")" "$USERPROFILE\.gradle" <<'PY'
+          import os, sys
+          paths = [os.path.join(d, f) for root in sys.argv[1:] for d, _, fs in os.walk(root) for f in fs]
+          for p in sorted(paths, key=len)[-3:]:
+              print(len(p), p)
+          PY
+
+      - name: keep the photo and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-gates-${{ matrix.mc }}
+          path: |
+            build/client-test
+            build/gate-b.log
+          if-no-files-found: ignore

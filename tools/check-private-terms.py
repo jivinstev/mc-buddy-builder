@@ -50,7 +50,7 @@ def load_terms():
     hashes = set(HASHES)
     local = ROOT / ".private-terms"
     if local.exists():
-        for line in local.read_text().splitlines():
+        for line in local.read_text(encoding="utf-8").splitlines():
             line = " ".join(WORD.findall(line.lower()))
             if line:
                 hashes.add(sha(line))
@@ -68,7 +68,7 @@ def hits(text, hashes):
 
 
 def git(*args):
-    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, check=True).stdout
+    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, check=True, encoding="utf-8", errors="replace").stdout
 
 
 def text_of(path):
@@ -143,7 +143,7 @@ def main(argv):
         print("check-private-terms: the hash list changed size; update EXPECTED_HASHES deliberately.")
         return 1
     if "--message" in argv:
-        text = Path(argv[argv.index("--message") + 1]).read_text()
+        text = Path(argv[argv.index("--message") + 1]).read_text(encoding="utf-8", errors="replace")
         text = "\n".join(l for l in text.splitlines() if not l.startswith("#"))
         return report(1, ["commit message"] if hits(text, hashes) else [], "the commit message")
     if "--commits" in argv:
